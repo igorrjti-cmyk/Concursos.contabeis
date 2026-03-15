@@ -156,97 +156,107 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
   const $ = cheerio.load(html);
   const items: Partial<Concurso>[] = [];
 
-  // ── Estrutura real confirmada do pciconcursos (/vagas/contador etc.) ──────
+  // ── ABORDAGEM DEFINITIVA ─────────────────────────────────────────────────
   //
-  // Cada concurso é um bloco com:
-  //   <a href="/noticias/slug-longo" title="Órgão - UF faz algo">Órgão</a>
-  //   <img .../>
+  // O pciconcursos renderiza cada concurso como um bloco de texto SOLTO,
+  // separado por <hr> ou simplesmente adjacente no body. Os dados de cada
+  // concurso ficam em nós de texto IRMÃOS do <a>, não em filhos.
+  // Por isso subir na DOM nunca funciona — chegamos no body inteiro.
+  //
+  // Solução: extrair o texto completo da página, dividir em BLOCOS
+  // usando os títulos dos links como delimitadores. Cada bloco contém:
+  //
+  //   [título do link / nome do órgão]
   //   UF
-  //   N vagas até R$ X.XXX,XX
-  //   Cargo1, Cargo2          ← pode ser "Vários Cargos"
-  //   Nível / Nível
-  //   DD/MM a                 ← data QUEBRADA em duas linhas
-  //   DD/MM/YYYY
+  //   N vagas até R$ X
+  //   Cargo
+  //   Nível
+  //   DD/MM a DD/MM/YYYY  (pode estar quebrado em 2 linhas)
   //
-  // Problemas anteriores:
-  //   1. O menu tem <a href="/noticias/">notícias</a> → filtrado abaixo exigindo slug
-  //   2. Cargo extraído de regex que nunca batia → agora usa split direto no texto
+  // O `title` do <a> tem formato "Órgão - UF faz algo" → usamos para
+  // extrair orgão e UF com segurança.
+
+  // 1. Coleta todos os links válidos de concurso em ordem de aparição
+  type LinkInfo = { href: string; orgao: string; title: string };
+  const links: LinkInfo[] = [];
 
   $("a[href*='/noticias/']").each((_, el) => {
-    const $a   = $(el);
-    const href = $a.attr("href") || "";
+    const href  = $(el).attr("href") || "";
+    const title = $(el).attr("title") || "";
+    const texto = $(el).text().trim();
 
-    // Filtra só links de notícias com slug real (ex: /noticias/camara-de-sabara-...)
-    // Exclui /noticias/ sozinho (link do menu) e /noticias/nacional/ etc.
-    if (!href.match(/\/noticias\/[a-z0-9][a-z0-9-]{5,}/)) return;
+    // Slug real: /noticias/nome-longo-com-varios-termos
+    if (!href.match(/\/noticias\/[a-z0-9][a-z0-9-]{10,}/)) return;
+    // Deve ter title com " - " separando orgão e estado
+    if (!title.includes(" - ")) return;
+    // Texto do link deve ser o nome do órgão (curto, sem verbos)
+    if (!texto || texto.length < 4 || texto.length > 80) return;
+    // Exclui links que são claramente notícias laterais (sem dados de vagas)
+    // — detectados pelo texto ser igual ao title completo
+    if (texto === title) return;
 
-    const orgao = $a.text().trim();
-    if (!orgao || orgao.length < 4) return;
+    links.push({
+      href: href.startsWith("http") ? href : BASE_URL + href,
+      orgao: texto,
+      title,
+    });
+  });
 
-    const linkNoticia = href.startsWith("http") ? href : BASE_URL + href;
+  if (links.length === 0) return [];
 
-    // Sobe na árvore DOM até encontrar o bloco que contém "até R$"
-    let $bloco = $a.parent();
-    for (let n = 0; n < 6; n++) {
-      if ($bloco.text().includes("até R$")) break;
-      $bloco = $bloco.parent();
-    }
-    if (!$bloco.text().includes("até R$")) return;
+  // 2. Extrai o texto completo da área de conteúdo (exclui nav e rodapé)
+  //    Usa o seletor mais específico disponível, fallback para body
+  const $conteudo = $("main, #content, .content, article, #main").first();
+  const textoCompleto = ($conteudo.length ? $conteudo : $("body"))
+    .text()
+    .replace(/\r/g, "")
+    .replace(/[ \t]+/g, " ")   // normaliza espaços horizontais
+    .replace(/\n{3,}/g, "\n\n") // máximo 2 quebras seguidas
+    .trim();
 
-    // Normaliza o texto do bloco: junta linhas para resolver "25/05 a\n25/06/2026"
-    const raw = $bloco.text()
-      .replace(/\r/g, "")
-      .replace(/\n+/g, "\n")
-      .trim();
+  const linhasGeral = textoCompleto.split("\n").map(l => l.trim()).filter(Boolean);
 
-    // Divide em linhas limpas (remove vazias e o nome do órgão repetido)
-    const linhas = raw
-      .split("\n")
-      .map(l => l.trim())
-      .filter(l => l.length > 0 && l !== orgao);
+  // 3. Para cada link, localiza o bloco correspondente no texto
+  for (const { href, orgao, title } of links) {
+    // UF vem no title: "Câmara de Sabará - MG abre concurso..."
+    const ufDoTitle = title.match(/\s+-\s+([A-Z]{2})\s+/)?.[1] ?? "Nacional";
 
-    // ── Estado (UF) ──────────────────────────────────────────────────────────
-    // Primeira linha que seja exatamente 2 letras maiúsculas
-    const uf = linhas.find(l => /^[A-Z]{2}$/.test(l)) ?? "Nacional";
+    // Localiza a linha que contém o nome do órgão
+    const idxOrgao = linhasGeral.findIndex(l => l === orgao || l.startsWith(orgao));
+    if (idxOrgao === -1) continue;
 
-    // ── Vagas e salário ───────────────────────────────────────────────────────
-    // Linha que contém "vagas até R$" ou "cadastro reserva até R$"
-    const vagasLinha = linhas.find(l =>
-      /(\d+\s+vagas?|cadastro\s+reserva)\s+até\s+R\$/i.test(l)
+    // Pega as próximas 10 linhas como bloco deste concurso
+    const bloco = linhasGeral.slice(idxOrgao, idxOrgao + 10);
+    // Junta tudo em uma string para o regex de data cruzar quebras de linha
+    const blocoTexto = bloco.join(" ");
+
+    // ── Vagas e salário ─────────────────────────────────────────────────────
+    const vagasMatch = blocoTexto.match(
+      /(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+até\s+R\$\s*([\d.,]+)/i
     );
-    if (!vagasLinha) return;
-
-    const vagasMatch = vagasLinha.match(
-      /^(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+até\s+R\$\s*([\d.,]+)/i
-    );
-    if (!vagasMatch) return;
+    if (!vagasMatch) continue;
 
     const vagasStr   = vagasMatch[1].replace(/\s+/g, " ").trim();
     const salarioStr = "R$ " + vagasMatch[2];
 
-    const idxVagas = linhas.indexOf(vagasLinha);
+    // ── Cargo ────────────────────────────────────────────────────────────────
+    // Linha logo após "vagas até R$ X" no bloco linha-a-linha
+    const vagasLinha = bloco.find(l =>
+      /(\d+\s+vagas?|cadastro\s+reserva)\s+até\s+R\$/i.test(l)
+    );
+    const idxVagasBloco = vagasLinha ? bloco.indexOf(vagasLinha) : -1;
+    const cargoLinha    = idxVagasBloco >= 0 ? (bloco[idxVagasBloco + 1] ?? "") : "";
+    const ehNivel       = /^(Fundamental|Médio|Superior|Técnico)/i.test(cargoLinha);
+    const cargo         = !ehNivel && cargoLinha.length > 1 ? cargoLinha : "Vários Cargos";
 
-    // ── Cargo ─────────────────────────────────────────────────────────────────
-    // Linha imediatamente após a linha de vagas
-    const cargoLinha = linhas[idxVagas + 1] ?? "";
-    // Cargo é texto simples — NÃO contém "/" nem parece nível de escolaridade
-    const ehNivel = /^(Fundamental|Médio|Superior|Técnico)/i.test(cargoLinha);
-    const cargo = (!ehNivel && cargoLinha.length > 1) ? cargoLinha : "Vários Cargos";
+    // ── Nível ────────────────────────────────────────────────────────────────
+    const nivelLinha = bloco.find(l => /^(Fundamental|Médio|Superior|Técnico)/i.test(l)) ?? "";
 
-    // ── Nível ─────────────────────────────────────────────────────────────────
-    // Linha que começa com uma palavra de nível de escolaridade
-    const nivelLinha = linhas.find(l => /^(Fundamental|Médio|Superior|Técnico)/i.test(l)) ?? "";
-
-    // ── Período de inscrição ─────────────────────────────────────────────────
-    // Pode estar em 1 linha ("DD/MM a DD/MM/YYYY") ou 2 ("DD/MM a" + "DD/MM/YYYY")
-    // Juntamos todas as linhas após o nível em uma string para o regex cruzar
-    const idxNivel = nivelLinha ? linhas.indexOf(nivelLinha) : idxVagas + 2;
-    const restoTexto = linhas.slice(idxNivel + 1).join(" ");
-
-    const periodoMatch = restoTexto.match(
+    // ── Período de inscrição (regex no texto junto para cruzar quebras) ──────
+    const periodoMatch  = blocoTexto.match(
       /(\d{2}\/\d{2}(?:\/\d{4})?)\s+a\s+(\d{2}\/\d{2}\/\d{4})/
     );
-    const dataUnicaMatch = restoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
+    const dataUnicaMatch = blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
 
     let inscricao    = "—";
     let inscricaoAte = "Ver edital";
@@ -263,10 +273,27 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
       inscricaoAte = dataUnicaMatch[1];
     }
 
+    // ── Filtro contábil ──────────────────────────────────────────────────────
+    // Garante que pelo menos o cargo OU o title mencionem contabilidade
+    const textoFiltro = (cargo + " " + title + " " + orgao).toLowerCase();
+    const ehContabil  = [
+      "contab","contador","contadora","fiscal","auditor","tribut","analista contábil"
+    ].some(t => textoFiltro.includes(t));
+
+    // "Vários Cargos" pode ser contábil — confia no contexto da URL de busca
+    // mas rejeita se o title menciona claramente outra área
+    const titleLower = title.toLowerCase();
+    const claramenteOutraArea = [
+      "fuzileiro","marinheiro","policia","bombeiro","saúde","médic","enferm",
+      "professor","magistério","engenheiro","advogad","delegado"
+    ].some(t => titleLower.includes(t));
+
+    if (!ehContabil && claramenteOutraArea) continue;
+
     items.push({
       id: slugify(cargo + "-" + orgao),
       orgao,
-      estado: uf,
+      estado: ufDoTitle,
       vagas: vagasStr,
       salario: salarioStr,
       cargo,
@@ -274,15 +301,15 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
       inscricao,
       inscricaoAte,
       diasRestantes: calcDiasRestantes(inscricaoAte),
-      linkNoticia,
-      linkEdital: linkNoticia,
+      linkNoticia: href,
+      linkEdital: href,
       banca: "—",
       dataProva: "—",
       dataResultado: "—",
       status: detectStatus(inscricaoAte),
       dataCaptura: new Date().toISOString(),
     });
-  });
+  }
 
   return items;
 }
