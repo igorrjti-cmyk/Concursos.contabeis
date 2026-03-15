@@ -1,4 +1,5 @@
 // src/lib/scraper.ts
+// Nota: extrairDetalhesDoPDF é importado dinamicamente em scrapeDetalhe
 //
 // FILTRO DE CARGOS CONTÁBEIS (v3):
 //   Aceita concursos que contenham qualquer dos seguintes no cargo/title/texto do edital:
@@ -741,20 +742,14 @@ async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   const $ = cheerio.load(html);
 
   // ── Extrai link PDF diretamente dos elementos <a href> ────────────────────
-  // Prioridade: href do link que aponta para PDF no domínio arq.pciconcursos
   let pdfHref = "";
   $("a[href]").each((_, el) => {
-    if (pdfHref) return; // já encontrou
+    if (pdfHref) return;
     const h = ($(el).attr("href") || "").trim();
-    if (
-      h.match(/\.pdf$/i) &&
-      (h.includes("arq.pciconcursos") || h.includes("pciconcursos"))
-    ) {
+    if (h.match(/\.pdf$/i) && (h.includes("arq.pciconcursos") || h.includes("pciconcursos"))) {
       pdfHref = h.startsWith("http") ? h : "https://arq.pciconcursos.com.br" + h;
     }
   });
-
-  // Fallback: qualquer link .pdf na página
   if (!pdfHref) {
     $("a[href$='.pdf'], a[href$='.PDF']").each((_, el) => {
       if (pdfHref) return;
@@ -763,39 +758,50 @@ async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
     });
   }
 
+  // ── Extrai do HTML da notícia (base) ──────────────────────────────────────
   const texto = $("body").text();
-  const det = extrairDetalhes(texto);
-
-  // Sobrescreve link do edital com o href real
+  const det   = extrairDetalhes(texto);
   if (pdfHref) det.linkEdital = pdfHref;
 
-  // ── Tenta identificar banca pelos links externos da página ────────────────
-  // O PCI frequentemente linka para o site da banca organizadora
+  // ── Tenta banca pelos links externos ─────────────────────────────────────
   if (det.banca === "-") {
     $("a[href]").each((_, el) => {
       if (det.banca !== "-") return;
       const href = ($(el).attr("href") || "").toLowerCase();
       for (const [dominio, nome] of Object.entries(DOMINIO_BANCA)) {
-        if (href.includes(dominio)) {
-          det.banca = nome;
-          return false; // break do each
-        }
+        if (href.includes(dominio)) { det.banca = nome; return false; }
       }
     });
   }
-
-  // ── Tenta identificar banca pelo texto do link (ex: "Acesse o site da IDECAN") ──
   if (det.banca === "-") {
     $("a").each((_, el) => {
       if (det.banca !== "-") return;
       const textoLink = ($(el).text() || "").toUpperCase();
       for (const b of BANCAS_CONHECIDAS) {
-        if (textoLink.includes(b.toUpperCase())) {
-          det.banca = b;
-          return false;
-        }
+        if (textoLink.includes(b.toUpperCase())) { det.banca = b; return false; }
       }
     });
+  }
+
+  // ── Extrai do PDF (fonte mais rica) ──────────────────────────────────────
+  // Sobrescreve campos do HTML com dados do PDF quando disponíveis e melhores
+  if (pdfHref) {
+    try {
+      const { extrairDetalhesDoPDF } = await import("./pdf-extractor");
+      const pdf = await extrairDetalhesDoPDF(pdfHref);
+      if (pdf) {
+        // PDF tem prioridade sobre HTML para todos os campos
+        if (pdf.banca          && pdf.banca          !== "-") det.banca          = pdf.banca;
+        if (pdf.dataProva      && pdf.dataProva      !== "-") det.dataProva      = pdf.dataProva;
+        if (pdf.dataResultado  && pdf.dataResultado  !== "-") det.dataResultado  = pdf.dataResultado;
+        if (pdf.requisito      && pdf.requisito      !== "-") det.requisito      = pdf.requisito;
+        if (pdf.cargosContabeis && pdf.cargosContabeis.length > 0) {
+          det.cargosContabeis = pdf.cargosContabeis;
+        }
+      }
+    } catch {
+      // PDF indisponível ou erro — mantém dados do HTML
+    }
   }
 
   return det;
