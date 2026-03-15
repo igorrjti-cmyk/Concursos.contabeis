@@ -604,6 +604,20 @@ export default function Home() {
                       <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, marginTop: 1 }} className="list-meta">
                         {c.estado} · {c.nivel}{c.banca !== "-" ? " · " + c.banca : ""}
                       </div>
+                      {/* Cargos contábeis inline quando há múltiplos */}
+                      {c.cargosContabeis && c.cargosContabeis.length > 1 && (
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
+                          {c.cargosContabeis.map(cg => (
+                            <span key={cg} style={{
+                              background: "rgba(0,200,150,.06)", border: "1px solid rgba(0,200,150,.15)",
+                              color: "rgba(0,200,150,.8)", fontSize: 9, fontWeight: 700,
+                              padding: "1px 6px", borderRadius: 4,
+                            }}>
+                              {cg}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Tags */}
@@ -641,6 +655,27 @@ export default function Home() {
                   {/* Painel expandido */}
                   {isOpen && (
                     <div style={{ borderTop: "1px solid rgba(255,255,255,.05)", padding: "14px 18px 18px" }}>
+
+                      {/* Cargos contábeis identificados */}
+                      {c.cargosContabeis && c.cargosContabeis.length > 1 && (
+                        <div style={{ marginBottom: 14 }}>
+                          <div style={{ color: "rgba(255,255,255,.2)", fontSize: 9, letterSpacing: 1.5, marginBottom: 6, textTransform: "uppercase" }}>
+                            🏷️ Cargos contábeis neste concurso
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {c.cargosContabeis.map(cargo => (
+                              <span key={cargo} style={{
+                                background: "rgba(0,200,150,.08)", border: "1px solid rgba(0,200,150,.2)",
+                                color: "#00C896", padding: "4px 10px", borderRadius: 7,
+                                fontSize: 11, fontWeight: 700,
+                              }}>
+                                {cargo}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Datas */}
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
                         {c.inscricao !== "-" && (
