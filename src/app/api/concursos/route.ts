@@ -16,24 +16,15 @@ interface CacheRow {
   atualizado: string;
 }
 
-export async function DELETE() {
-  try {
-    const sb = getSupabase();
-    if (!sb) return NextResponse.json({ ok: false, error: "Supabase não configurado" }, { status: 503 });
-    const { error } = await sb.from("cache_concursos").delete().eq("chave", CACHE_KEY);
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, message: "Cache limpo com sucesso" });
-  } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
-  }
-}
+// GET — retorna concursos (do cache ou scraping ao vivo)
+export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const forceRefresh = searchParams.get("refresh") === "1";
 
   try {
     const sb = getSupabase();
 
-    // ── 1. Tenta ler cache do Supabase ──────────────────────────────────────
+    // 1. Tenta ler cache do Supabase
     if (sb && !forceRefresh) {
       const { data, error } = await sb
         .from("cache_concursos")
@@ -55,11 +46,11 @@ export async function DELETE() {
       }
     }
 
-    // ── 2. Scraping ao vivo ─────────────────────────────────────────────────
+    // 2. Scraping ao vivo
     const concursos = await scrapeAllConcursos();
     const atualizadoEm = new Date().toISOString();
 
-    // ── 3. Persiste no Supabase (upsert) ────────────────────────────────────
+    // 3. Persiste no Supabase (upsert)
     if (sb) {
       await sb.from("cache_concursos").upsert({
         chave: CACHE_KEY,
@@ -81,5 +72,30 @@ export async function DELETE() {
       { ok: false, error: "Falha ao buscar concursos" },
       { status: 500 }
     );
+  }
+}
+
+// DELETE — limpa o cache do Supabase
+export async function DELETE() {
+  try {
+    const sb = getSupabase();
+    if (!sb) {
+      return NextResponse.json(
+        { ok: false, error: "Supabase não configurado" },
+        { status: 503 }
+      );
+    }
+    const { error } = await sb
+      .from("cache_concursos")
+      .delete()
+      .eq("chave", CACHE_KEY);
+
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, message: "Cache limpo com sucesso" });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
