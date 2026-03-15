@@ -144,55 +144,115 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
   const $ = cheerio.load(html);
   const items: Partial<Concurso>[] = [];
 
-  // Mapa de links de notícias: title → href
-  const linksMap: Record<string, string> = {};
+  // ── Estratégia: usar cada <a href="/noticias/..."> como âncora de um bloco ──
+  //
+  // Estrutura real do HTML (confirmada):
+  //
+  //  <a href="/noticias/slug" title="Órgão - UF ...">Órgão</a>
+  //  <img .../>
+  //  UF\n
+  //  "N vagas até R$ X" \n
+  //  "Cargo1, Cargo2"\n
+  //  "Nível"\n
+  //  "DD/MM a\nDD/MM/YYYY"   ← QUEBRADO EM DUAS LINHAS — ponto crítico
+  //
+  // Solução: pegar o texto do bloco-pai (parent) de cada link de notícia,
+  // que contém tudo numa única string — aí o regex cruza as quebras de linha.
+
   $("a[href*='/noticias/']").each((_, el) => {
-    const href = $(el).attr("href") || "";
-    const title = $(el).attr("title") || $(el).text().trim();
-    if (href && title) linksMap[title] = href.startsWith("http") ? href : BASE_URL + href;
-  });
+    const $a   = $(el);
+    const href = $a.attr("href") || "";
+    if (!href.includes("/noticias/")) return;
 
-  const linhas = $("body").text().split(/\n/).map(l => l.trim()).filter(Boolean);
+    // Nome do órgão = texto do link
+    const orgao = $a.text().trim();
+    if (!orgao || orgao.length < 4) return;
 
-  for (let i = 0; i < linhas.length; i++) {
-    const linha = linhas[i];
-    const vagasMatch = linha.match(
-      /^(\d+(?:\s+vagas?\s*(?:\+\s*CR)?|\s+vaga)?|(?:vagas?|cadastro\s+reserva))\s+até\s+R\$\s*([\d.,]+)/i
+    // Link completo
+    const linkNoticia = href.startsWith("http") ? href : BASE_URL + href;
+
+    // Pega o container pai — o bloco que envolve todos os dados do concurso.
+    // Sobe até encontrar um elemento que contenha o padrão "vagas até R$"
+    let $bloco = $a.parent();
+    for (let nivel = 0; nivel < 5; nivel++) {
+      if ($bloco.text().includes("até R$")) break;
+      $bloco = $bloco.parent();
+    }
+
+    // Texto do bloco inteiro, normalizando quebras de linha em espaço
+    const blocoTexto = $bloco.text()
+      .replace(/\n+/g, " ")   // junta linhas — resolve o "25/05 a\n25/06/2026"
+      .replace(/\s{2,}/g, " ")
+      .trim();
+
+    // ── Estado (UF) ──────────────────────────────────────────────────────────
+    const ufMatch = blocoTexto.match(/\b([A-Z]{2})\b/);
+    const uf = ufMatch ? ufMatch[1] : "Nacional";
+
+    // ── Vagas e salário ───────────────────────────────────────────────────────
+    const vagasMatch = blocoTexto.match(
+      /(\d+\s+vagas?\s*(?:\+\s*CR)?|vagas?|cadastro\s+reserva)\s+até\s+R\$\s*([\d.,]+)/i
     );
-    if (!vagasMatch) continue;
-
-    const vagasStr = vagasMatch[1].replace(/\s+/g, " ").trim();
+    if (!vagasMatch) return; // sem este dado, não é um bloco de concurso válido
+    const vagasStr   = vagasMatch[1].replace(/\s+/g, " ").trim();
     const salarioStr = "R$ " + vagasMatch[2];
-    const ufLinha = i >= 1 ? linhas[i-1] : "";
-    const uf = /^[A-Z]{2}$/.test(ufLinha) ? ufLinha : "Nacional";
-    const orgao = i >= 2 ? linhas[i-2] : "";
-    if (!orgao || orgao.length < 4) { i += 3; continue; }
 
-    const cargo   = linhas[i+1] || "";
-    const nivelRaw = linhas[i+2] || "";
-    const periodoRaw = linhas[i+3] || "";
-    const periodoValido = /\d{2}\/\d{2}/.test(periodoRaw);
-    const inscricao = periodoValido ? periodoRaw : "—";
-    const inscricaoAte = periodoValido
-      ? (periodoRaw.includes(" a ") ? periodoRaw.split(" a ")[1].trim() : periodoRaw)
-      : "Ver edital";
+    // ── Cargo ─────────────────────────────────────────────────────────────────
+    // Vem logo após "até R$ X.XXX,XX" no texto: é a próxima frase relevante
+    const apósSalario = blocoTexto.slice(blocoTexto.indexOf(vagasMatch[0]) + vagasMatch[0].length).trim();
+    // Primeira linha não-vazia antes do nível
+    const cargoMatch = apósSalario.match(/^([^/\d][^/]{2,80?}?)(?:\s+(?:Fundamental|Médio|Superior|Técnico))/i);
+    const cargo = cargoMatch ? cargoMatch[1].trim() : "Vários Cargos";
 
-    const linkNoticia = Object.entries(linksMap)
-      .find(([t]) => t.includes(orgao.split(" - ")[0]) || orgao.includes(t.split(" - ")[0]))?.[1] || "";
+    // ── Nível ─────────────────────────────────────────────────────────────────
+    const nivelMatch = blocoTexto.match(/((?:Fundamental|Médio|Superior|Técnico)(?:\s*\/\s*(?:Fundamental|Médio|Superior|Técnico))*)/i);
+    const nivelRaw = nivelMatch ? nivelMatch[1] : "";
+
+    // ── Período de inscrição ─────────────────────────────────────────────────
+    // Regex que captura tanto "DD/MM a DD/MM/YYYY" quanto "DD/MM/YYYY" isolado
+    // O "a" pode estar separado por espaço — captura cruzando a quebra de linha
+    const periodoMatch = blocoTexto.match(
+      /(\d{2}\/\d{2}(?:\/\d{4})?)\s+a\s+(\d{2}\/\d{2}\/\d{4})/
+    );
+    const dataUnicaMatch = !periodoMatch && blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
+
+    let inscricao   = "—";
+    let inscricaoAte = "Ver edital";
+
+    if (periodoMatch) {
+      // Normaliza início: se só "DD/MM", adiciona ano da data final
+      const anoFim = periodoMatch[2].split("/")[2];
+      const inicio = periodoMatch[1].includes("/20")
+        ? periodoMatch[1]
+        : periodoMatch[1] + "/" + anoFim;
+      inscricao    = `${inicio} a ${periodoMatch[2]}`;
+      inscricaoAte = periodoMatch[2];
+    } else if (dataUnicaMatch) {
+      inscricao    = dataUnicaMatch[1];
+      inscricaoAte = dataUnicaMatch[1];
+    }
 
     items.push({
       id: slugify(cargo + "-" + orgao),
-      orgao, estado: uf, vagas: vagasStr, salario: salarioStr,
-      cargo, nivel: detectNivel(nivelRaw),
-      inscricao, inscricaoAte,
-      diasRestantes: calcDiasRestantes(inscricao),
-      linkNoticia, linkEdital: linkNoticia,
-      banca: "—", dataProva: "—", dataResultado: "—",
-      status: detectStatus(inscricao),
+      orgao,
+      estado: uf,
+      vagas: vagasStr,
+      salario: salarioStr,
+      cargo,
+      nivel: detectNivel(nivelRaw),
+      inscricao,
+      inscricaoAte,
+      diasRestantes: calcDiasRestantes(inscricaoAte),
+      linkNoticia,
+      linkEdital: linkNoticia,
+      banca: "—",
+      dataProva: "—",
+      dataResultado: "—",
+      status: detectStatus(inscricaoAte),
       dataCaptura: new Date().toISOString(),
     });
-    i += 3;
-  }
+  });
+
   return items;
 }
 

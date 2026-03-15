@@ -55,7 +55,23 @@ export default function Home() {
   const [atualizadoEm, setAtualizadoEm] = useState("");
   const [fromCache, setFromCache]   = useState(false);
 
-  // fetch concursos
+  const [clearing, setClearing] = useState(false);
+
+  const clearCache = async () => {
+    if (!confirm("Limpar o cache do Supabase? O próximo acesso vai fazer um novo scraping.")) return;
+    setClearing(true);
+    try {
+      const res = await fetch("/api/concursos", { method: "DELETE" });
+      const data = await res.json();
+      if (data.ok) {
+        alert("✅ Cache limpo! Clique em Atualizar para buscar dados frescos.");
+      } else {
+        alert("❌ Erro: " + data.error);
+      }
+    } finally {
+      setClearing(false);
+    }
+  };
   const fetchConcursos = useCallback(async (forceRefresh = false) => {
     forceRefresh ? setRefreshing(true) : setLoading(true);
     try {
@@ -174,10 +190,16 @@ export default function Home() {
             {atualizadoEm && <> • {fromCache ? "🗄️" : "🔄"} {atualizadoEm}</>}
           </div>
         </div>
-        <button onClick={() => fetchConcursos(true)} disabled={refreshing} style={{ background:refreshing?"rgba(0,200,150,.15)":"linear-gradient(135deg,#00C896,#00A87A)", color:refreshing?"#00C896":"#002D1F", border:"none", borderRadius:10, padding:"9px 18px", fontSize:12, fontWeight:700, cursor:refreshing?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:6 }}>
-          <span style={{ display:"inline-block", animation:refreshing?"spin .8s linear infinite":"none" }}>⟳</span>
-          {refreshing ? "Buscando…" : "Atualizar"}
-        </button>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <button onClick={clearCache} disabled={clearing} title="Limpar cache do Supabase" style={{ background:"rgba(255,75,75,.1)", border:"1px solid rgba(255,75,75,.25)", color:"#FF4B4B", borderRadius:10, padding:"9px 14px", fontSize:12, fontWeight:700, cursor:clearing?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:6, opacity:clearing?.6:1 }}>
+            <span style={{ display:"inline-block", animation:clearing?"spin .8s linear infinite":"none" }}>🗑️</span>
+            {clearing ? "Limpando…" : "Limpar cache"}
+          </button>
+          <button onClick={() => fetchConcursos(true)} disabled={refreshing} style={{ background:refreshing?"rgba(0,200,150,.15)":"linear-gradient(135deg,#00C896,#00A87A)", color:refreshing?"#00C896":"#002D1F", border:"none", borderRadius:10, padding:"9px 18px", fontSize:12, fontWeight:700, cursor:refreshing?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:6 }}>
+            <span style={{ display:"inline-block", animation:refreshing?"spin .8s linear infinite":"none" }}>⟳</span>
+            {refreshing ? "Buscando…" : "Atualizar"}
+          </button>
+        </div>
       </header>
 
       {/* ── STATS ── */}

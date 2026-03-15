@@ -16,7 +16,17 @@ interface CacheRow {
   atualizado: string;
 }
 
-export async function GET(req: Request) {
+export async function DELETE() {
+  try {
+    const sb = getSupabase();
+    if (!sb) return NextResponse.json({ ok: false, error: "Supabase não configurado" }, { status: 503 });
+    const { error } = await sb.from("cache_concursos").delete().eq("chave", CACHE_KEY);
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, message: "Cache limpo com sucesso" });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+  }
+}
   const { searchParams } = new URL(req.url);
   const forceRefresh = searchParams.get("refresh") === "1";
 
