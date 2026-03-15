@@ -638,17 +638,26 @@ export default function Home() {
                       <Btn color="#FFB800" onClick={e => { e.stopPropagation(); marcarPostado(c); }} disabled={postado}>
                         {postado ? "Postado" : "Marcar postado"}
                       </Btn>
-                      <a
-                        href={c.linkEdital} target="_blank" rel="noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        style={{
-                          background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)",
-                          color: "rgba(255,255,255,.45)", borderRadius: 9, padding: "7px 12px",
-                          fontSize: 11, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap",
-                        }}
-                      >
-                        Edital ↗
-                      </a>
+                      {(() => {
+                        const isPdf = c.linkEdital.toLowerCase().endsWith(".pdf");
+                        return (
+                          <a
+                            href={c.linkEdital} target="_blank" rel="noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            title={isPdf ? "Abrir PDF do edital" : "Abrir notícia (PDF não encontrado)"}
+                            style={{
+                              background: isPdf ? "rgba(0,200,150,.08)" : "rgba(255,255,255,.04)",
+                              border: isPdf ? "1px solid rgba(0,200,150,.2)" : "1px solid rgba(255,255,255,.08)",
+                              color: isPdf ? "#00C896" : "rgba(255,255,255,.35)",
+                              borderRadius: 9, padding: "7px 12px",
+                              fontSize: 11, fontWeight: 600,
+                              textDecoration: "none", whiteSpace: "nowrap",
+                            }}
+                          >
+                            {isPdf ? "📄 PDF" : "Notícia ↗"}
+                          </a>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -754,11 +763,23 @@ export default function Home() {
                     <Btn color="#FFB800" onClick={() => marcarPostado(c)} disabled={jaPostado(c.id)}>
                       {jaPostado(c.id) ? "Postado" : "Marcar"}
                     </Btn>
-                    <a href={c.linkEdital} target="_blank" rel="noreferrer" style={{
-                      background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.15)",
-                      color: "#A78BFA", borderRadius: 9, padding: "8px 12px",
-                      fontSize: 11, fontWeight: 600, textDecoration: "none",
-                    }}>Edital ↗</a>
+                    {(() => {
+                      const isPdf = c.linkEdital.toLowerCase().endsWith(".pdf");
+                      return (
+                        <a href={c.linkEdital} target="_blank" rel="noreferrer"
+                          title={isPdf ? "Abrir PDF do edital" : "Abrir notícia"}
+                          style={{
+                            background: isPdf ? "rgba(0,200,150,.08)" : "rgba(167,139,250,.08)",
+                            border: isPdf ? "1px solid rgba(0,200,150,.2)" : "1px solid rgba(167,139,250,.15)",
+                            color: isPdf ? "#00C896" : "#A78BFA",
+                            borderRadius: 9, padding: "8px 12px",
+                            fontSize: 11, fontWeight: 600, textDecoration: "none",
+                          }}
+                        >
+                          {isPdf ? "📄 PDF" : "Notícia ↗"}
+                        </a>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}

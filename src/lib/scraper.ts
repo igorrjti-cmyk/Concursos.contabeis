@@ -360,6 +360,21 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     if (!title.includes(" - ")) return;
     if (!texto || texto.length < 4 || texto.length > 80) return;
     if (texto === title) return;
+
+    // ── Aceita apenas CONCURSO PÚBLICO — descarta processo seletivo ──────────
+    const titleLow = title.toLowerCase();
+    const hrefLow  = href.toLowerCase();
+    const ehPS =
+      titleLow.includes("processo seletivo") ||
+      titleLow.includes("processo simplificado") ||
+      titleLow.includes("sele\u00e7\u00e3o simplificada") ||
+      titleLow.includes("selecao simplificada") ||
+      / pss[\s,.]/.test(titleLow) || titleLow.endsWith(" pss") ||
+      / pst[\s,.]/.test(titleLow) || titleLow.endsWith(" pst") ||
+      hrefLow.includes("processo-seletivo") ||
+      hrefLow.includes("selecao-simplificada");
+    if (ehPS) return;
+
     links.push({ href: href.startsWith("http") ? href : BASE_URL + href, orgao: texto, title });
   });
 
@@ -471,12 +486,36 @@ async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   if (!html) return empty;
   const cheerio = await import("cheerio");
   const $ = cheerio.load(html);
-  const texto = $("body").text();
 
+  // ── Extrai link PDF diretamente dos elementos <a href> ────────────────────
+  // Prioridade: href do link que aponta para PDF no domínio arq.pciconcursos
+  let pdfHref = "";
+  $("a[href]").each((_, el) => {
+    if (pdfHref) return; // já encontrou
+    const h = ($(el).attr("href") || "").trim();
+    if (
+      h.match(/\.pdf$/i) &&
+      (h.includes("arq.pciconcursos") || h.includes("pciconcursos"))
+    ) {
+      pdfHref = h.startsWith("http") ? h : "https://arq.pciconcursos.com.br" + h;
+    }
+  });
+
+  // Fallback: qualquer link .pdf na página
+  if (!pdfHref) {
+    $("a[href$='.pdf'], a[href$='.PDF']").each((_, el) => {
+      if (pdfHref) return;
+      const h = ($(el).attr("href") || "").trim();
+      if (h) pdfHref = h.startsWith("http") ? h : url.replace(/\/[^\/]*$/, "/") + h;
+    });
+  }
+
+  const texto = $("body").text();
   const det = extrairDetalhes(texto);
 
-  // Segunda chance no filtro: se o cargo foi "Vários Cargos" e o edital tem
-  // requisito contábil, o concurso é válido e os cargosContabeis estão preenchidos
+  // Sobrescreve link do edital com o href real (mais confiável que regex no texto)
+  if (pdfHref) det.linkEdital = pdfHref;
+
   return det;
 }
 
