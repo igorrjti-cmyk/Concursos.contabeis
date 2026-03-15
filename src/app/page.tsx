@@ -159,7 +159,7 @@ export default function Home() {
         setAtualizadoEm(new Date(data.atualizadoEm).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" }));
 
         // ── LOGS AUTOMÁTICOS NO CONSOLE ─────────────────────────────────────
-        const c: import("@/lib/scraper").Concurso[] = data.concursos;
+        const c = data.concursos as Concurso[];
         console.group(`%c📊 Concursos Contábeis — ${data.fromCache ? "🗄️ CACHE" : "🔄 SCRAPING AO VIVO"}`, "color:#00C896;font-weight:bold;font-size:13px");
         console.log(`%cTotal: ${c.length} | Atualizado: ${new Date(data.atualizadoEm).toLocaleString("pt-BR")}`, "color:#aaa");
 
