@@ -884,6 +884,7 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     let det: DetalhesEdital = {
       dataProva: "-", dataResultado: "-", banca: "-",
       linkEdital: "", cargosContabeis: [], requisito: "-",
+      ehProcessoSeletivo: false,
     };
 
     if (i < LIMITE_DETALHE && item.linkNoticia) {

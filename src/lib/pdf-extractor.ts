@@ -194,8 +194,8 @@ function extrairDataProva(textoNorm: string): string {
     // Cronograma: "Provas ............. 08/02/2026"
     /provas?[.\s\-]{2,}(\d{2}\/\d{2}\/\d{4})/i,
     // Genérico: data perto da palavra prova
-    /(\d{2}\/\d{2}\/\d{4})[^]{0,40}prova/i,
-    /prova[^]{0,40}(\d{2}\/\d{2}\/\d{4})/i,
+    /(\d{2}\/\d{2}\/\d{4})[\s\S]{0,40}prova/i,
+    /prova[\s\S]{0,40}(\d{2}\/\d{2}\/\d{4})/i,
   ];
   for (const re of padroes) {
     const m = textoNorm.match(re);
