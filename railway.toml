@@ -1,18 +1,12 @@
-# railway.toml — Configuração de deploy no Railway
-# Documentação: https://docs.railway.app/reference/config-as-code
+# railway.toml
 
 [build]
 builder = "NIXPACKS"
+# Remove node_modules do cache e reinstala do zero para evitar
+# binários antigos (@resvg, etc.) que quebram o webpack build
+buildCommand = "rm -rf node_modules && npm install && npm run build"
 
 [deploy]
 startCommand = "npx playwright install chromium --with-deps && npm start"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
-
-# Cron job: chama o worker a cada 5 minutos para processar a fila
-[[services]]
-name = "worker-cron"
-
-[services.cron]
-schedule = "*/5 * * * *"
-command   = "curl -s -X POST $NEXT_PUBLIC_APP_URL/api/publicar/worker -H 'Authorization: Bearer $WORKER_SECRET' -H 'Content-Type: application/json'"
