@@ -1,14 +1,8 @@
 // src/lib/scraper.ts
-// Scraper real do pciconcursos.com.br
-// Estrutura confirmada pelos logs de debug:
-//
-// Linha do orgao:  "Prefeitura de Planalto"
-// Linha do UF:     "PR"
-// Linha colapsada: "76 vagas ate R$ 9.738,75Varios CargosMedio / Tecnico / Superior"
-// Linha da data:   "18/03 a" (quebra aqui!)
-// Linha da data2:  "26/04/2026"
-//
-// Tudo numa unica linha colapsada: vagas + cargo + nivel sem separador
+// STATUS simplificado (sem "Em Andamento"):
+//   Inscricoes Abertas → inscrição ainda aberta (diasRestantes >= 0)
+//   Previsto           → sem data clara ou inscrição já encerrada (aguarda prova/resultado)
+//   Encerrado          → descartado na filtragem (nunca retornado)
 
 export interface Concurso {
   id: string;
@@ -26,13 +20,12 @@ export interface Concurso {
   nivel: string;
   dataProva: string;
   dataResultado: string;
-  status: "Inscricoes Abertas" | "Em Andamento" | "Previsto" | "Encerrado";
+  status: "Inscricoes Abertas" | "Previsto" | "Encerrado";
   dataCaptura: string;
 }
 
-// Display-friendly status label
 export function statusDisplay(s: string): string {
-  if (s === "Inscricoes Abertas") return "Inscri\u00e7\u00f5es Abertas";
+  if (s === "Inscricoes Abertas") return "Inscrições Abertas";
   return s;
 }
 
@@ -84,26 +77,24 @@ function slugify(t: string) {
 function detectNivel(t: string) {
   const l = t.toLowerCase();
   const s  = l.includes("superior");
-  const m  = l.includes("medio") || l.includes("m\u00e9dio");
-  const tc = l.includes("tecnico") || l.includes("t\u00e9cnico");
-  if (s && (m || tc)) return "M\u00e9dio/T\u00e9cnico/Superior";
-  if (tc) return "M\u00e9dio/T\u00e9cnico";
+  const m  = l.includes("medio") || l.includes("médio");
+  const tc = l.includes("tecnico") || l.includes("técnico");
+  if (s && (m || tc)) return "Médio/Técnico/Superior";
+  if (tc) return "Médio/Técnico";
   if (s) return "Superior";
-  if (m) return "M\u00e9dio";
+  if (m) return "Médio";
   return "Superior";
 }
 
 function calcDiasRestantes(inscricao: string): number {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
-  // Find all DD/MM/YYYY dates and use the last one (end date)
   const matches = [...inscricao.matchAll(/(\d{2})\/(\d{2})\/(\d{4})/g)];
   if (matches.length > 0) {
     const u = matches[matches.length - 1];
     const d = new Date(+u[3], +u[2] - 1, +u[1]);
     return Math.ceil((d.getTime() - hoje.getTime()) / 86400000);
   }
-  // DD/MM without year - only if future this year
   const mc = inscricao.match(/(\d{2})\/(\d{2})(?!\/)/);
   if (mc) {
     const d = new Date(hoje.getFullYear(), +mc[2] - 1, +mc[1]);
@@ -113,23 +104,12 @@ function calcDiasRestantes(inscricao: string): number {
   return -1;
 }
 
+// Sem "Em Andamento" — datas passadas viram Previsto
 function detectStatus(inscricaoAte: string): Concurso["status"] {
   if (!inscricaoAte || inscricaoAte === "Ver edital") return "Previsto";
   const dias = calcDiasRestantes(inscricaoAte);
-  if (dias === -1) return "Previsto";
-  if (dias < 0) return "Em Andamento";
+  if (dias < 0) return "Previsto";   // inscrição encerrada → Previsto (aguardando prova)
   return "Inscricoes Abertas";
-}
-
-function refinarStatus(status: Concurso["status"], dataResultado: string): Concurso["status"] {
-  if (status !== "Em Andamento") return status;
-  if (!dataResultado || dataResultado === "-") return "Em Andamento";
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const m = dataResultado.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  if (!m) return "Em Andamento";
-  const d = new Date(+m[3], +m[2] - 1, +m[1]);
-  return d < hoje ? "Encerrado" : "Em Andamento";
 }
 
 function extrairDetalhes(texto: string) {
@@ -181,7 +161,6 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
   const $ = cheerio.load(html);
   const items: Partial<Concurso>[] = [];
 
-  // Collect valid concurso links
   type LinkInfo = { href: string; orgao: string; title: string };
   const links: LinkInfo[] = [];
 
@@ -189,42 +168,25 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const href  = $(el).attr("href") || "";
     const title = $(el).attr("title") || "";
     const texto = $(el).text().trim();
-
     if (!href.match(/\/noticias\/[a-z0-9][a-z0-9-]{10,}/)) return;
     if (!title.includes(" - ")) return;
     if (!texto || texto.length < 4 || texto.length > 80) return;
     if (texto === title) return;
-
-    links.push({
-      href: href.startsWith("http") ? href : BASE_URL + href,
-      orgao: texto,
-      title,
-    });
+    links.push({ href: href.startsWith("http") ? href : BASE_URL + href, orgao: texto, title });
   });
 
   if (links.length === 0) return [];
 
-  // Extract full page text
   const $conteudo = $("main, #content, .content, article, #main").first();
   const textoCompleto = ($conteudo.length ? $conteudo : $("body"))
-    .text()
-    .replace(/\r/g, "")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .text().replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 
   const linhasGeral = textoCompleto.split("\n").map(l => l.trim()).filter(Boolean);
 
   for (const { href, orgao, title } of links) {
-    // UF from title: "Camara de Sabara - MG abre concurso..."
     const ufDoTitle = title.match(/\s+-\s+([A-Z]{2})\s+/)?.[1] ?? "Nacional";
 
-    // Extract cargo from title
-    // Title patterns: "...publica edital para Contador e Economista"
-    //                 "...abre concurso para Auditor Fiscal"
     const cargoDoTitle = (() => {
-      // Title: "Camara de Pirangucu - MG abre concurso para Auxiliar de Servicos Gerais, Tecnico Legislativo, Contador"
-      // We want to capture ALL cargos listed after "para"
       const m = title.match(/\b(?:para|ao cargo de|vagas?\s+(?:de|para))\s+(.{3,80}?)(?:\s+em\s+|\s+com\s+|\s+no\s+|\s+na\s+|\s+sob\s+|$)/i);
       if (m) {
         const c = m[1].trim().replace(/\s+$/, "");
@@ -233,62 +195,45 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
       return null;
     })();
 
-    // Locate the orgao line in the full text
     const idxOrgao = linhasGeral.findIndex(l => l === orgao);
     if (idxOrgao === -1) continue;
 
-    // Get 5 lines starting from orgao
     const bloco = linhasGeral.slice(idxOrgao, idxOrgao + 5);
     const blocoTexto = bloco.join(" ");
 
-    // ── Vagas e salario ──────────────────────────────────────────────────────
     const vagasMatch = blocoTexto.match(
-      /(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+at[e\u00e9]\s+R\$\s*([\d.,]+)/i
+      /(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+at[eé]\s+R\$\s*([\d.,]+)/i
     );
     if (!vagasMatch) continue;
 
     const vagasStr   = vagasMatch[1].replace(/\s+/g, " ").trim();
     const salarioStr = "R$ " + vagasMatch[2];
 
-    // ── Cargo ────────────────────────────────────────────────────────────────
-    // Priority: (1) from title, (2) from collapsed line after salary, (3) fallback
     let cargo = cargoDoTitle ?? "";
 
     if (!cargo) {
-      // The line is collapsed: "76 vagas ate R$ 9.738,75Varios CargosMedio/Superior"
-      // After removing the vagas+salary part, what remains starts with cargo
-      const linhaColaps = bloco.find(l => /at[e\u00e9]\s+R\$\s*[\d.,]+/i.test(l)) ?? "";
+      const linhaColaps = bloco.find(l => /at[eé]\s+R\$\s*[\d.,]+/i.test(l)) ?? "";
       if (linhaColaps) {
         const afterSalary = linhaColaps.replace(/^.*?R\$\s*[\d.,]+/i, "").trim();
-        // Cargo is the text before the nivel keywords
-        const mC = afterSalary.match(/^(.+?)(?=\s*(?:Fundamental|M[e\u00e9]dio|Superior|T[e\u00e9]cnico))/i);
-        if (mC && mC[1].trim().length > 1) {
-          cargo = mC[1].trim();
-        }
+        const mC = afterSalary.match(/^(.+?)(?=\s*(?:Fundamental|M[eé]dio|Superior|T[eé]cnico))/i);
+        if (mC && mC[1].trim().length > 1) cargo = mC[1].trim();
       }
     }
 
     if (!cargo) {
-      // Separate line fallback
-      const vagasLinha = bloco.find(l => /(\d+\s+vagas?|cadastro\s+reserva)\s+at[e\u00e9]\s+R\$/i.test(l));
+      const vagasLinha = bloco.find(l => /(\d+\s+vagas?|cadastro\s+reserva)\s+at[eé]\s+R\$/i.test(l));
       const idxV = vagasLinha ? bloco.indexOf(vagasLinha) : -1;
       const prox = idxV >= 0 ? (bloco[idxV + 1] ?? "") : "";
-      const ehNivel = /^(Fundamental|M[e\u00e9]dio|Superior|T[e\u00e9]cnico)/i.test(prox);
-      cargo = !ehNivel && prox.length > 1 ? prox : "V\u00e1rios Cargos";
+      const ehNivel = /^(Fundamental|M[eé]dio|Superior|T[eé]cnico)/i.test(prox);
+      cargo = !ehNivel && prox.length > 1 ? prox : "Vários Cargos";
     }
 
-    // ── Nivel ────────────────────────────────────────────────────────────────
     const nivelMatch = blocoTexto.match(
-      /((?:Fundamental|M[e\u00e9]dio|Superior|T[e\u00e9]cnico)(?:\s*\/\s*(?:Fundamental|M[e\u00e9]dio|Superior|T[e\u00e9]cnico))*)/i
+      /((?:Fundamental|M[eé]dio|Superior|T[eé]cnico)(?:\s*\/\s*(?:Fundamental|M[eé]dio|Superior|T[eé]cnico))*)/i
     );
     const nivelRaw = nivelMatch ? nivelMatch[1] : "";
 
-    // ── Periodo de inscricao ─────────────────────────────────────────────────
-    // Join lines so "18/03 a\n26/04/2026" becomes "18/03 a 26/04/2026"
-    // Also handles "18/03 a26/04/2026" (no space before second date)
-    const periodoMatch = blocoTexto.match(
-      /(\d{2}\/\d{2}(?:\/\d{4})?)\s+a\s*(\d{2}\/\d{2}\/\d{4})/
-    );
+    const periodoMatch = blocoTexto.match(/(\d{2}\/\d{2}(?:\/\d{4})?)\s+a\s*(\d{2}\/\d{2}\/\d{4})/);
     const dataUnicaMatch = blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
 
     let inscricao    = "-";
@@ -300,13 +245,10 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
       inscricao    = inicio + " a " + periodoMatch[2];
       inscricaoAte = periodoMatch[2];
     } else if (dataUnicaMatch) {
-      // Single date — use it regardless of past/future
-      // Past = Em Andamento, Future = Inscricoes Abertas
       inscricao    = dataUnicaMatch[1];
       inscricaoAte = dataUnicaMatch[1];
     }
 
-    // ── Filtro contabil ──────────────────────────────────────────────────────
     const textoFiltro = (cargo + " " + title + " " + orgao).toLowerCase();
     const ehContabil  = ["contab","contador","contadora","fiscal","auditor","tribut","analista contabil"]
       .some(t => textoFiltro.includes(t));
@@ -316,20 +258,10 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
 
     items.push({
       id: slugify(cargo + "-" + orgao),
-      orgao,
-      estado: ufDoTitle,
-      vagas: vagasStr,
-      salario: salarioStr,
-      cargo,
-      nivel: detectNivel(nivelRaw),
-      inscricao,
-      inscricaoAte,
+      orgao, estado: ufDoTitle, vagas: vagasStr, salario: salarioStr, cargo,
+      nivel: detectNivel(nivelRaw), inscricao, inscricaoAte,
       diasRestantes: calcDiasRestantes(inscricaoAte),
-      linkNoticia: href,
-      linkEdital: href,
-      banca: "-",
-      dataProva: "-",
-      dataResultado: "-",
+      linkNoticia: href, linkEdital: href, banca: "-", dataProva: "-", dataResultado: "-",
       status: detectStatus(inscricaoAte),
       dataCaptura: new Date().toISOString(),
     });
@@ -355,12 +287,11 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     try {
       const items = await scrapeListagem(url);
       for (const item of items) {
-        if (item.status === "Em Andamento" || item.status === "Inscricoes Abertas" || item.status === "Previsto") {
-          const key = item.id || slugify((item.cargo || "") + (item.orgao || ""));
-          if (!seen.has(key) && item.orgao && item.orgao !== "-") {
-            seen.add(key);
-            brutos.push({ ...item, id: key });
-          }
+        if (item.status === "Encerrado") continue;
+        const key = item.id || slugify((item.cargo || "") + (item.orgao || ""));
+        if (!seen.has(key) && item.orgao && item.orgao !== "-") {
+          seen.add(key);
+          brutos.push({ ...item, id: key });
         }
       }
     } catch {
@@ -378,33 +309,34 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     let det = { dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "" };
     if (i < LIMITE && item.linkNoticia) det = await scrapeDetalhe(item.linkNoticia);
 
-    const statusFinal = refinarStatus(item.status || "Inscricoes Abertas", det.dataResultado);
-    if (statusFinal === "Encerrado") continue;
-
     completos.push({
-      id: item.id!,
-      cargo:       item.cargo || "-",
-      orgao:       item.orgao || "-",
-      estado:      item.estado || "Nacional",
-      vagas:       item.vagas || "-",
-      salario:     item.salario || "A consultar",
-      inscricao:   item.inscricao || "-",
-      inscricaoAte: item.inscricaoAte || "Ver edital",
+      id:            item.id!,
+      cargo:         item.cargo || "-",
+      orgao:         item.orgao || "-",
+      estado:        item.estado || "Nacional",
+      vagas:         item.vagas || "-",
+      salario:       item.salario || "A consultar",
+      inscricao:     item.inscricao || "-",
+      inscricaoAte:  item.inscricaoAte || "Ver edital",
       diasRestantes: item.diasRestantes ?? -1,
-      linkNoticia: item.linkNoticia || "",
-      linkEdital:  det.linkEdital || item.linkNoticia || "",
-      banca:       det.banca !== "-" ? det.banca : (item.banca || "-"),
-      nivel:       item.nivel || "Superior",
-      dataProva:   det.dataProva,
+      linkNoticia:   item.linkNoticia || "",
+      linkEdital:    det.linkEdital || item.linkNoticia || "",
+      banca:         det.banca !== "-" ? det.banca : (item.banca || "-"),
+      nivel:         item.nivel || "Superior",
+      dataProva:     det.dataProva,
       dataResultado: det.dataResultado,
-      status:      statusFinal,
-      dataCaptura: new Date().toISOString(),
+      status:        item.status as Concurso["status"],
+      dataCaptura:   new Date().toISOString(),
     });
   }
 
+  // Inscrições abertas primeiro (por prazo crescente), depois Previstos
   return completos.sort((a, b) => {
-    const o: Record<string, number> = { "Inscricoes Abertas": 0, "Em Andamento": 1, "Previsto": 2 };
-    return (o[a.status] ?? 2) - (o[b.status] ?? 2);
+    if (a.status === b.status) {
+      if (a.status === "Inscricoes Abertas") return a.diasRestantes - b.diasRestantes;
+      return 0;
+    }
+    return a.status === "Inscricoes Abertas" ? -1 : 1;
   });
 }
 
@@ -413,25 +345,21 @@ export function getFallbackData(): Concurso[] {
     {
       id: "contador-camara-sabara-mg",
       cargo: "Contador",
-      orgao: "Camara de Sabara",
+      orgao: "Câmara de Sabarà",
       estado: "MG",
       vagas: "10 vagas",
       salario: "R$ 5.409,87",
       inscricao: "25/05/2026 a 25/06/2026",
       inscricaoAte: "25/06/2026",
       diasRestantes: 102,
-      linkNoticia: "https://www.pciconcursos.com.br/noticias/camara-de-sabara-mg-abre-concurso-com-10-vagas-em-diversas-areas",
-      linkEdital: "https://www.pciconcursos.com.br/noticias/camara-de-sabara-mg-abre-concurso-com-10-vagas-em-diversas-areas",
-      banca: "IMESO",
-      nivel: "Superior",
-      dataProva: "-",
-      dataResultado: "-",
-      status: "Inscricoes Abertas",
-      dataCaptura: new Date().toISOString(),
+      linkNoticia: "https://www.pciconcursos.com.br/noticias/camara-de-sabara-mg",
+      linkEdital: "https://www.pciconcursos.com.br/noticias/camara-de-sabara-mg",
+      banca: "IMESO", nivel: "Superior", dataProva: "-", dataResultado: "-",
+      status: "Inscricoes Abertas", dataCaptura: new Date().toISOString(),
     },
     {
       id: "contador-prefeitura-paracatu-mg",
-      cargo: "Contador, Economista",
+      cargo: "Contador e Economista",
       orgao: "Prefeitura de Paracatu",
       estado: "MG",
       vagas: "4 vagas",
@@ -439,14 +367,25 @@ export function getFallbackData(): Concurso[] {
       inscricao: "09/04/2026 a 11/05/2026",
       inscricaoAte: "11/05/2026",
       diasRestantes: 57,
-      linkNoticia: "https://www.pciconcursos.com.br/noticias/prefeitura-de-paracatu-mg-publica-edital-para-contador-e-economista",
-      linkEdital: "https://arq.pciconcursos.com.br/prefeitura-de-paracatu-mg-publica-edital-para-contador-e-economista/1694166/2eccd45c85/edital_de_abertura_n_01_2026_1694166.pdf",
-      banca: "-",
-      nivel: "Superior",
-      dataProva: "-",
-      dataResultado: "-",
-      status: "Inscricoes Abertas",
-      dataCaptura: new Date().toISOString(),
+      linkNoticia: "https://www.pciconcursos.com.br/noticias/prefeitura-de-paracatu-mg",
+      linkEdital: "https://arq.pciconcursos.com.br/edital_1694166.pdf",
+      banca: "-", nivel: "Superior", dataProva: "-", dataResultado: "-",
+      status: "Inscricoes Abertas", dataCaptura: new Date().toISOString(),
+    },
+    {
+      id: "auditor-fiscal-sefaz-go",
+      cargo: "Auditor Fiscal",
+      orgao: "SEFAZ Goiás",
+      estado: "GO",
+      vagas: "50 vagas",
+      salario: "R$ 21.000,00",
+      inscricao: "Ver edital",
+      inscricaoAte: "Ver edital",
+      diasRestantes: -1,
+      linkNoticia: "https://www.pciconcursos.com.br",
+      linkEdital: "https://www.pciconcursos.com.br",
+      banca: "CESPE", nivel: "Superior", dataProva: "15/08/2026", dataResultado: "-",
+      status: "Previsto", dataCaptura: new Date().toISOString(),
     },
   ];
 }
