@@ -106,24 +106,23 @@ export async function PATCH(req: Request) {
   };
 
   const updates: Record<string, unknown> = { status: body.status };
-  if (body.erro_msg)     updates.erro_msg     = body.erro_msg;
-  if (body.publicado_em) updates.publicado_em  = body.publicado_em;
-  if (body.status === "erro") updates.tentativas = sb.rpc; // incrementado via SQL abaixo
+  if (body.erro_msg)     updates.erro_msg    = body.erro_msg;
+  if (body.publicado_em) updates.publicado_em = body.publicado_em;
+
+  // Se for erro, busca tentativas atuais e incrementa manualmente
+  if (body.status === "erro") {
+    const { data: atual } = await sb
+      .from("agendamentos")
+      .select("tentativas")
+      .eq("id", body.id)
+      .single<{ tentativas: number }>();
+    updates.tentativas = (atual?.tentativas ?? 0) + 1;
+  }
 
   const { error } = await sb
     .from("agendamentos")
     .update(updates)
     .eq("id", body.id);
-
-  // Incrementa tentativas se for erro
-  if (body.status === "erro") {
-    await sb.rpc("incrementar_tentativas", { agendamento_id: body.id }).catch(() => {
-      // fallback manual se a function não existir
-      sb.from("agendamentos")
-        .update({ tentativas: (body as { tentativas?: number }).tentativas ?? 1 })
-        .eq("id", body.id);
-    });
-  }
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
