@@ -151,8 +151,21 @@ export async function extrairDetalhesDoPDF(pdfUrl: string): Promise<Partial<Deta
 // ─── Banca ────────────────────────────────────────────────────────────────────
 function extrairBanca(texto: string): string {
   const up = texto.toUpperCase();
+
+  // Termos ambíguos precisam de contexto para não dar falso positivo
+  const AMBIGUOS = new Set(["OBJETIVA CONCURSOS", "OBJETIVA", "ACESSO", "NOVA", "MAIS", "CAP", "RBO"]);
+  const CTX_BANCA = /(?:banca|organiza[cç][aã]o|organizadora|realiza[cç][aã]o|respons[aá]vel|execu[cç][aã]o|contrat)/i;
+
   for (const b of BANCAS_PDF) {
-    if (up.includes(b.toUpperCase())) return b;
+    const bUp = b.toUpperCase();
+    if (!up.includes(bUp)) continue;
+    if (AMBIGUOS.has(b)) {
+      const idx = up.indexOf(bUp);
+      const ctx = texto.substring(Math.max(0, idx - 150), idx + bUp.length + 150);
+      if (CTX_BANCA.test(ctx)) return b;
+    } else {
+      return b;
+    }
   }
 
   // Padrões de frase

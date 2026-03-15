@@ -122,6 +122,8 @@ const DOMINIO_BANCA: Record<string, string> = {
   "objetiva.org":           "OBJETIVA CONCURSOS",
   "objetiva.com.br":        "OBJETIVA CONCURSOS",
   "amauc.org.br":           "AMAUC",
+  "amauc.selecao.net.br":   "AMAUC",
+  "amauc.listaeditais.com.br": "AMAUC",
   "acesseconcurso.com.br":  "ACESSE CONCURSO",
   "ibgp.org.br":            "IBGP",
   "conscam.com.br":         "CONSCAM",
@@ -589,9 +591,24 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
   // Banca — múltiplas estratégias de detecção
   const textoUp = texto.toUpperCase();
 
-  // Estratégia 1: nome exato da banca no texto
+  // Estratégia 1: nome exato da banca, mas com contexto (não detecta "objetiva" em "prova objetiva")
+  // Termos ambíguos precisam de contexto; termos únicos podem ser buscados diretamente
+  const BANCAS_AMBIGUAS = new Set(["OBJETIVA", "CIDADES", "ACESSO", "NOVA", "MAIS", "CAP", "RBO", "IFB"]);
+  const CONTEXTO_BANCA = /(?:banca|organiza[çc][aã]o|organizadora|realiza[çc][aã]o|respons[aá]vel|execu[çc][aã]o|contrat|inscri[çc][oõ]es?\s+(?:pelo?|pela?))/i;
+
   for (const b of BANCAS_CONHECIDAS) {
-    if (textoUp.includes(b.toUpperCase())) { out.banca = b; break; }
+    const bUp = b.toUpperCase();
+    if (!textoUp.includes(bUp)) continue;
+
+    if (BANCAS_AMBIGUAS.has(b)) {
+      // Para termos ambíguos: só aceita se aparecer próximo de palavra de contexto de banca
+      const idx = textoUp.indexOf(bUp);
+      const contexto = texto.substring(Math.max(0, idx - 120), idx + bUp.length + 120);
+      if (CONTEXTO_BANCA.test(contexto)) { out.banca = b; break; }
+    } else {
+      // Termos únicos (AMAUC, IDECAN, FAFIPA, etc.): aceita diretamente
+      out.banca = b; break;
+    }
   }
 
   // Estratégia 2: padrões de frases que indicam a banca organizadora
