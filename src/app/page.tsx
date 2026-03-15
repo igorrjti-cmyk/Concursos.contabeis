@@ -337,7 +337,7 @@ export default function Home() {
     return list;
   })();
 
-  const stats = {
+  const contagens = {
     total:    concursos.length,
     abertas:  concursos.filter(c => c.status === "Inscricoes Abertas").length,
     previstos: concursos.filter(c => c.status === "Previsto").length,
@@ -486,12 +486,12 @@ export default function Home() {
 
       {/* ══════════════════════ STATS BAR ══════════════════════ */}
       <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,.05)", overflowX: "auto" }} className="stats-bar">
-        <StatCard label="Total"             value={stats.total}    color="#fff"     />
-        <StatCard label="Inscrições Abertas" value={stats.abertas}  color="#00C896"  sub={`${stats.urgentes} urgentes`} />
-        <StatCard label="Previstos"          value={stats.previstos} color="#FFB800" />
-        <StatCard label="Com Data de Prova"  value={stats.comProva}  color="#A78BFA" />
-        {stats.urgentes > 0 && (
-          <StatCard label="⚡ Urgentes (≤7d)" value={stats.urgentes}  color="#FF4B4B" sub="encerram em breve" />
+        <StatCard label="Total"             value={contagens.total}    color="#fff"     />
+        <StatCard label="Inscrições Abertas" value={contagens.abertas}  color="#00C896"  sub={`${contagens.urgentes} urgentes`} />
+        <StatCard label="Previstos"          value={contagens.previstos} color="#FFB800" />
+        <StatCard label="Com Data de Prova"  value={contagens.comProva}  color="#A78BFA" />
+        {contagens.urgentes > 0 && (
+          <StatCard label="⚡ Urgentes (≤7d)" value={contagens.urgentes}  color="#FF4B4B" sub="encerram em breve" />
         )}
       </div>
 
