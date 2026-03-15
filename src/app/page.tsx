@@ -17,7 +17,7 @@ function statusLabel(s: string): string {
 }
 
 const STATUS_DOT: Record<string, string> = {
-  "Inscri\u00e7\u00f5es Abertas": "#00C896",
+  "Inscricoes Abertas": "#00C896",
   "Em Andamento": "#60A5FA",
   "Previsto": "#FFB800",
   "Encerrado": "#FF4B4B",
@@ -197,7 +197,7 @@ export default function Home() {
           console.groupEnd();
         }
 
-        const andamentoSemData = c.filter(x => x.status === "Em Andamento" && x.dataResultado === "\u2014");
+        const andamentoSemData = c.filter(x => x.status === "Em Andamento" && x.dataResultado === "-");
         if (andamentoSemData.length > 0) {
           console.group("EM ANDAMENTO SEM RESULTADO (" + andamentoSemData.length + ")");
           console.table(andamentoSemData.slice(0, 10).map(x => ({ orgao: x.orgao, inscricao: x.inscricao, inscricaoAte: x.inscricaoAte, dias: x.diasRestantes })));
@@ -235,7 +235,7 @@ export default function Home() {
   useEffect(() => { fetchConcursos(); fetchHistorico(); }, [fetchConcursos, fetchHistorico]);
 
   const filtered = concursos.filter(c => {
-    const filterReal = filter === "todos" ? "todos" : filter === "Inscricoes Abertas" ? "Inscri\u00e7\u00f5es Abertas" : filter;
+    const filterReal = filter === "todos" ? "todos" : filter;
     if (filterReal !== "todos" && c.status !== filterReal) return false;
     if (estadoFiltro !== "Todos" && c.estado !== estadoFiltro) return false;
     if (busca.trim()) {
@@ -247,7 +247,7 @@ export default function Home() {
 
   const stats = {
     total:       concursos.length,
-    abertas:     concursos.filter(c => c.status === "Inscri\u00e7\u00f5es Abertas").length,
+    abertas:     concursos.filter(c => c.status === "Inscricoes Abertas").length,
     emAndamento: concursos.filter(c => c.status === "Em Andamento").length,
     previstos:   concursos.filter(c => c.status === "Previsto").length,
     urgentes:    concursos.filter(c => c.diasRestantes >= 0 && c.diasRestantes <= 7).length,
@@ -426,7 +426,7 @@ export default function Home() {
                       </div>
                       <div style={{ color:"#00C896", fontSize:12, marginTop:2 }}>{c.orgao}</div>
                       <div style={{ color:"rgba(255,255,255,.3)", fontSize:10, marginTop:1 }}>
-                        {c.estado} &bull; {c.nivel}{c.banca !== "\u2014" ? " \u2022 " + c.banca : ""}
+                        {c.estado} &bull; {c.nivel}{c.banca !== "-" ? " \u2022 " + c.banca : ""}
                       </div>
                     </div>
                     <div style={{ display:"flex", gap:6, flexWrap:"wrap" }} className="list-actions">
@@ -450,9 +450,9 @@ export default function Home() {
                   {expanded===c.id && (
                     <div style={{ borderTop:"1px solid rgba(255,255,255,.06)", padding:"14px 18px 18px" }}>
                       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
-                        {c.inscricao !== "\u2014" && <span style={{ background:"rgba(0,200,150,.1)", border:"1px solid rgba(0,200,150,.2)", color:"#00C896", padding:"4px 10px", borderRadius:7, fontSize:11, fontWeight:700 }}>Inscricoes: {c.inscricao}</span>}
-                        {c.dataProva !== "\u2014" && <span style={{ background:"rgba(167,139,250,.1)", border:"1px solid rgba(167,139,250,.2)", color:"#A78BFA", padding:"4px 10px", borderRadius:7, fontSize:11, fontWeight:700 }}>Prova: {c.dataProva}</span>}
-                        {c.dataResultado !== "\u2014" && <span style={{ background:"rgba(255,184,0,.1)", border:"1px solid rgba(255,184,0,.2)", color:"#FFB800", padding:"4px 10px", borderRadius:7, fontSize:11, fontWeight:700 }}>Resultado: {c.dataResultado}</span>}
+                        {c.inscricao !== "-" && <span style={{ background:"rgba(0,200,150,.1)", border:"1px solid rgba(0,200,150,.2)", color:"#00C896", padding:"4px 10px", borderRadius:7, fontSize:11, fontWeight:700 }}>Inscricoes: {c.inscricao}</span>}
+                        {c.dataProva !== "-" && <span style={{ background:"rgba(167,139,250,.1)", border:"1px solid rgba(167,139,250,.2)", color:"#A78BFA", padding:"4px 10px", borderRadius:7, fontSize:11, fontWeight:700 }}>Prova: {c.dataProva}</span>}
+                        {c.dataResultado !== "-" && <span style={{ background:"rgba(255,184,0,.1)", border:"1px solid rgba(255,184,0,.2)", color:"#FFB800", padding:"4px 10px", borderRadius:7, fontSize:11, fontWeight:700 }}>Resultado: {c.dataResultado}</span>}
                       </div>
                       <div style={{ color:"rgba(255,255,255,.25)", fontSize:9, letterSpacing:1.5, marginBottom:8 }}>LEGENDA PRONTA</div>
                       <pre style={{ background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.07)", borderRadius:9, padding:14, color:"rgba(255,255,255,.75)", fontSize:11, whiteSpace:"pre-wrap", lineHeight:1.75, margin:0, maxHeight:200, overflowY:"auto" }}>
