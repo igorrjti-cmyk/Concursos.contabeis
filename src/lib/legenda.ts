@@ -75,7 +75,7 @@ function gerarHashtags(c: Concurso): string {
   tags.add("#estudandoparaconcurso"); tags.add(`#concurso${ano}`);
   tags.add(`#vagas${ano}`); tags.add("#oportunidade");
 
-  return [...tags].join(" ");
+  return Array.from(tags).join(" ");
 }
 
 export function gerarLegenda(c: Concurso): string {
