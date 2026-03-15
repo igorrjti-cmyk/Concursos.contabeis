@@ -83,19 +83,26 @@ function detectNivel(t: string) {
 
 function calcDiasRestantes(inscricao: string): number {
   const hoje = new Date(); hoje.setHours(0,0,0,0);
-  // "DD/MM a DD/MM/YYYY" ou "DD/MM/YYYY"
-  const m = inscricao.match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s*$)/);
-  if (m) {
-    const d = new Date(+m[3], +m[2]-1, +m[1]);
+
+  // Extrai a última data do formato "DD/MM/YYYY" na string (ignora âncora de fim)
+  const datas = [...inscricao.matchAll(/(\d{2})\/(\d{2})\/(\d{4})/g)];
+  if (datas.length > 0) {
+    // Usa sempre a última data encontrada (data final do período)
+    const u = datas[datas.length - 1];
+    const d = new Date(+u[3], +u[2]-1, +u[1]);
     return Math.ceil((d.getTime() - hoje.getTime()) / 86400000);
   }
-  // "DD/MM" sem ano
-  const mc = inscricao.match(/(\d{2})\/(\d{2})(?:\s*$)/);
+
+  // "DD/MM" sem ano — só marca como válido se parecer uma data futura próxima
+  // Não usa "próximo ano" para evitar falsos "Em Andamento"
+  const mc = inscricao.match(/(\d{2})\/(\d{2})(?!\/)/);
   if (mc) {
     const d = new Date(hoje.getFullYear(), +mc[2]-1, +mc[1]);
-    if (d < hoje) d.setFullYear(d.getFullYear()+1);
+    // Se a data já passou este ano, retorna -1 (não assume próximo ano)
+    if (d < hoje) return -1;
     return Math.ceil((d.getTime() - hoje.getTime()) / 86400000);
   }
+
   return -1;
 }
 
@@ -218,19 +225,34 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
 
   // 3. Para cada link, localiza o bloco correspondente no texto
   for (const { href, orgao, title } of links) {
-    // UF vem no title: "Câmara de Sabará - MG abre concurso..."
+    // ── UF via title ─────────────────────────────────────────────────────────
+    // title = "Câmara de Sabará - MG abre concurso com 10 vagas em diversas áreas"
     const ufDoTitle = title.match(/\s+-\s+([A-Z]{2})\s+/)?.[1] ?? "Nacional";
 
-    // Localiza a linha que contém o nome do órgão
-    const idxOrgao = linhasGeral.findIndex(l => l === orgao || l.startsWith(orgao));
+    // ── Cargo via title ───────────────────────────────────────────────────────
+    // O title menciona os cargos: "...edital para Contador e Economista"
+    // Padrões: "para X", "ao cargo de X", "vagas para X", "cargos de X"
+    const cargoDoTitle = (() => {
+      const t = title;
+      // Tenta extrair após "para", "ao cargo de", "vaga de"
+      const m = t.match(/\b(?:para|ao cargo de|vaga(?:s)? (?:de|para))\s+([^,.(]+?)(?:\s+e\s+[A-Z][^,.(]+?)?(?:\s+em\s+|\s+com\s+|\s+n[ao]\s+|[,.(]|$)/i);
+      if (m) {
+        const candidato = m[1].trim();
+        // Deve parecer um cargo (não uma frase longa)
+        if (candidato.length < 60 && !candidato.includes("concurso")) return candidato;
+      }
+      return null;
+    })();
+
+    // Localiza o bloco do concurso no texto a partir do nome do órgão
+    const idxOrgao = linhasGeral.findIndex(l => l === orgao);
     if (idxOrgao === -1) continue;
 
-    // Pega as próximas 10 linhas como bloco deste concurso
-    const bloco = linhasGeral.slice(idxOrgao, idxOrgao + 10);
-    // Junta tudo em uma string para o regex de data cruzar quebras de linha
+    // Pega 8 linhas a partir do órgão
+    const bloco = linhasGeral.slice(idxOrgao, idxOrgao + 8);
     const blocoTexto = bloco.join(" ");
 
-    // ── Vagas e salário ─────────────────────────────────────────────────────
+    // ── Vagas e salário ──────────────────────────────────────────────────────
     const vagasMatch = blocoTexto.match(
       /(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+até\s+R\$\s*([\d.,]+)/i
     );
@@ -240,22 +262,21 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const salarioStr = "R$ " + vagasMatch[2];
 
     // ── Cargo ────────────────────────────────────────────────────────────────
-    // Linha logo após "vagas até R$ X" no bloco linha-a-linha
-    const vagasLinha = bloco.find(l =>
-      /(\d+\s+vagas?|cadastro\s+reserva)\s+até\s+R\$/i.test(l)
-    );
-    const idxVagasBloco = vagasLinha ? bloco.indexOf(vagasLinha) : -1;
-    const cargoLinha    = idxVagasBloco >= 0 ? (bloco[idxVagasBloco + 1] ?? "") : "";
-    const ehNivel       = /^(Fundamental|Médio|Superior|Técnico)/i.test(cargoLinha);
-    const cargo         = !ehNivel && cargoLinha.length > 1 ? cargoLinha : "Vários Cargos";
+    // Prioridade: (1) extraído do title, (2) linha após vagas, (3) "Vários Cargos"
+    let cargo = cargoDoTitle ?? "";
+    if (!cargo) {
+      const vagasLinha = bloco.find(l => /(\d+\s+vagas?|cadastro\s+reserva)\s+até\s+R\$/i.test(l));
+      const idxV = vagasLinha ? bloco.indexOf(vagasLinha) : -1;
+      const proximaLinha = idxV >= 0 ? (bloco[idxV + 1] ?? "") : "";
+      const ehNivel = /^(Fundamental|Médio|Superior|Técnico)/i.test(proximaLinha);
+      cargo = !ehNivel && proximaLinha.length > 1 ? proximaLinha : "Vários Cargos";
+    }
 
     // ── Nível ────────────────────────────────────────────────────────────────
     const nivelLinha = bloco.find(l => /^(Fundamental|Médio|Superior|Técnico)/i.test(l)) ?? "";
 
-    // ── Período de inscrição (regex no texto junto para cruzar quebras) ──────
-    const periodoMatch  = blocoTexto.match(
-      /(\d{2}\/\d{2}(?:\/\d{4})?)\s+a\s+(\d{2}\/\d{2}\/\d{4})/
-    );
+    // ── Período de inscrição ─────────────────────────────────────────────────
+    const periodoMatch   = blocoTexto.match(/(\d{2}\/\d{2}(?:\/\d{4})?)\s+a\s+(\d{2}\/\d{2}\/\d{4})/);
     const dataUnicaMatch = blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
 
     let inscricao    = "—";
@@ -263,9 +284,7 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
 
     if (periodoMatch) {
       const anoFim = periodoMatch[2].split("/")[2];
-      const inicio = periodoMatch[1].includes("/20")
-        ? periodoMatch[1]
-        : `${periodoMatch[1]}/${anoFim}`;
+      const inicio = periodoMatch[1].includes("/20") ? periodoMatch[1] : `${periodoMatch[1]}/${anoFim}`;
       inscricao    = `${inicio} a ${periodoMatch[2]}`;
       inscricaoAte = periodoMatch[2];
     } else if (dataUnicaMatch) {
@@ -274,20 +293,11 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     }
 
     // ── Filtro contábil ──────────────────────────────────────────────────────
-    // Garante que pelo menos o cargo OU o title mencionem contabilidade
     const textoFiltro = (cargo + " " + title + " " + orgao).toLowerCase();
-    const ehContabil  = [
-      "contab","contador","contadora","fiscal","auditor","tribut","analista contábil"
-    ].some(t => textoFiltro.includes(t));
-
-    // "Vários Cargos" pode ser contábil — confia no contexto da URL de busca
-    // mas rejeita se o title menciona claramente outra área
-    const titleLower = title.toLowerCase();
-    const claramenteOutraArea = [
-      "fuzileiro","marinheiro","policia","bombeiro","saúde","médic","enferm",
-      "professor","magistério","engenheiro","advogad","delegado"
-    ].some(t => titleLower.includes(t));
-
+    const ehContabil  = ["contab","contador","contadora","fiscal","auditor","tribut","analista contábil"]
+      .some(t => textoFiltro.includes(t));
+    const claramenteOutraArea = ["fuzileiro","marinheiro","policia","bombeiro","médic","enferm","professor","magistério","engenheiro","advogad","delegado"]
+      .some(t => title.toLowerCase().includes(t));
     if (!ehContabil && claramenteOutraArea) continue;
 
     items.push({
