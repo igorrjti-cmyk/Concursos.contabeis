@@ -94,6 +94,55 @@ const BANCAS_CONHECIDAS = [
   "PROCESSO SELETIVO UNIFICADO", "PSU",
 ];
 
+// ─── Mapeamento de domínio de site → nome da banca ────────────────────────────
+// Quando o PCI linka para o site da banca organizadora, usamos isso para identificá-la
+const DOMINIO_BANCA: Record<string, string> = {
+  "idecan.org.br":          "IDECAN",
+  "cebraspe.org.br":        "CEBRASPE",
+  "cespe.unb.br":           "CESPE",
+  "fgv.br":                 "FGV",
+  "concursosfcc.com.br":    "FCC",
+  "vunesp.com.br":          "VUNESP",
+  "ibfc.org.br":            "IBFC",
+  "institutoaocp.org.br":   "AOCP",
+  "fundatec.org.br":        "FUNDATEC",
+  "fepese.org.br":          "FEPESE",
+  "iades.org.br":           "IADES",
+  "quadrix.org.br":         "QUADRIX",
+  "nucepe.uespi.br":        "NUCEPE",
+  "consulplan.com":         "CONSULPLAN",
+  "objetiva.org":           "OBJETIVA",
+  "objetiva.com.br":        "OBJETIVA",
+  "imeso.com.br":           "IMESO",
+  "fafipa.br":              "FAFIPA",
+  "fundacaofafipa.org.br":  "FAFIPA",
+  "fafipe.edu.br":          "FAFIPE",
+  "fadesp.org.br":          "FADESP",
+  "funrio.org.br":          "FUNRIO",
+  "institutoibam.com.br":   "IBAM",
+  "abcpconcursos.com.br":   "ABCP",
+  "capconcursos.com.br":    "CAP CONCURSOS",
+  "nossorumo.org.br":       "NOSSO RUMO",
+  "institutonossorumo.org": "NOSSO RUMO",
+  "fadenor.com.br":         "FADENOR",
+  "cognus.org.br":          "COGNUS",
+  "exatus.org.br":          "EXATUS",
+  "legalle.org.br":         "LEGALLE",
+  "movens.org.br":          "MOVENS",
+  "fumarc.com.br":          "FUMARC",
+  "comperve.ufrn.br":       "COMPERVE",
+  "funcab.org":             "FUNCAB",
+  "idib.org.br":            "IDIB",
+  "idcan.org.br":           "IDCAN",
+  "avancasp.org.br":        "AVANCASP",
+  "novaconcursos.org.br":   "NOVA CONCURSOS",
+  "intelectus.org.br":      "INTELECTUS",
+  "institutoselecon.com.br":"SELECON",
+  "ibamsp.org.br":          "IBAM",
+  "instituto-mais.com":     "INSTITUTO MAIS",
+  "cotec.org.br":           "COTEC",
+};
+
 // ─── Termos que identificam cargos CONTÁBEIS ─────────────────────────────────
 // Nível 1 — palavra-chave direta no nome do cargo
 const CARGO_CONTABIL_KW = [
@@ -174,25 +223,61 @@ const CARGOS_NAO_CONTABEIS = [
  * Ex: "Contador" → "Contador"
  */
 export function filtrarCargosContabeis(cargo: string): string {
+  // Remove prefixos genéricos de descrição de escolaridade
+  // Ex: "diversos níveis de escolaridade" → descarta, usa cargosContabeis do edital
+  const cargoLow = cargo.toLowerCase().trim();
+  if (
+    cargoLow.startsWith("diversos") ||
+    cargoLow.startsWith("vários") ||
+    cargoLow.startsWith("varios") ||
+    cargoLow === "cargos de nível médio e superior" ||
+    cargoLow === "cargos de nivel medio e superior" ||
+    /^cargos? de n[íi]vel/i.test(cargoLow)
+  ) {
+    return "Vários Cargos"; // será substituído pelos cargosContabeis do edital
+  }
+
   // Separa por vírgula, " e ", " E ", "/"
   const partes = cargo
     .split(/,|\s+e\s+|\//)
     .map(p => p.trim())
     .filter(p => p.length > 1);
 
-  if (partes.length <= 1) return cargo; // cargo simples, não altera
+  if (partes.length <= 1) {
+    // Cargo simples — normaliza capitalização
+    return normalizarNomeCargo(cargo);
+  }
 
   const contabeis = partes.filter(p => {
     const pLow = p.toLowerCase();
-    // Tem palavra-chave contábil?
     const temContabil = CARGO_CONTABIL_KW.some(kw => pLow.includes(kw));
-    // É claramente não-contábil?
     const ehNaoContabil = CARGOS_NAO_CONTABEIS.some(nc => pLow.includes(nc.toLowerCase()));
     return temContabil && !ehNaoContabil;
   });
 
-  if (contabeis.length === 0) return cargo; // não conseguiu filtrar, mantém original
-  return contabeis.join(" e ");
+  if (contabeis.length === 0) return normalizarNomeCargo(cargo);
+  return contabeis.map(normalizarNomeCargo).join(" e ");
+}
+
+/**
+ * Normaliza o nome do cargo para exibição:
+ * - Title case correto para nomes de cargos
+ * - Remove sufixos desnecessários
+ */
+function normalizarNomeCargo(cargo: string): string {
+  // Palavras que ficam em minúsculo no título (preposições/artigos)
+  const minusculas = new Set(["de", "da", "do", "das", "dos", "e", "em", "na", "no", "nas", "nos", "a", "o", "as", "os"]);
+
+  return cargo
+    .trim()
+    .toLowerCase()
+    .split(" ")
+    .map((word, idx) => {
+      if (idx === 0) return word.charAt(0).toUpperCase() + word.slice(1);
+      if (minusculas.has(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -384,10 +469,43 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
     if (m?.[1] && m[1] !== out.dataProva) { out.dataResultado = m[1]; break; }
   }
 
-  // Banca — percorre da mais específica para genérica
+  // Banca — múltiplas estratégias de detecção
   const textoUp = texto.toUpperCase();
+
+  // Estratégia 1: nome exato da banca no texto
   for (const b of BANCAS_CONHECIDAS) {
     if (textoUp.includes(b.toUpperCase())) { out.banca = b; break; }
+  }
+
+  // Estratégia 2: padrões de frases que indicam a banca organizadora
+  if (out.banca === "-") {
+    const padroesBanca = [
+      /organiza(?:do|ção)\s+(?:pela?|pelo?\s+instituto)\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõç\s\-]{2,40}?)(?:\s*[,.
+]|$)/i,
+      /banca\s+organiz\w+\s*[:–-]\s*([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõç\s\-]{2,40}?)(?:\s*[,.
+]|$)/i,
+      /(?:realiz\w+|execut\w+)\s+(?:pela?|pelo?)\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõç\s\-]{2,40}?)(?:\s*[,.
+]|$)/i,
+      /empresa\s+organiz\w+\s*[:–-]\s*([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõç\s\-]{2,40}?)(?:\s*[,.
+]|$)/i,
+    ];
+    for (const re of padroesBanca) {
+      const m = texto.match(re);
+      if (m?.[1]) {
+        const candidato = m[1].trim().replace(/\s+/g, " ");
+        // Verifica se o candidato corresponde a alguma banca conhecida
+        const bancaMatch = BANCAS_CONHECIDAS.find(b =>
+          candidato.toUpperCase().includes(b.toUpperCase()) ||
+          b.toUpperCase().includes(candidato.toUpperCase().slice(0, 6))
+        );
+        if (bancaMatch) { out.banca = bancaMatch; break; }
+        // Guarda o texto raw se tiver tamanho razoável (pode ser banca nova)
+        if (candidato.length >= 3 && candidato.length <= 40) {
+          out.banca = candidato.toUpperCase();
+          break;
+        }
+      }
+    }
   }
 
   // Link do edital PDF
@@ -586,8 +704,37 @@ async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   const texto = $("body").text();
   const det = extrairDetalhes(texto);
 
-  // Sobrescreve link do edital com o href real (mais confiável que regex no texto)
+  // Sobrescreve link do edital com o href real
   if (pdfHref) det.linkEdital = pdfHref;
+
+  // ── Tenta identificar banca pelos links externos da página ────────────────
+  // O PCI frequentemente linka para o site da banca organizadora
+  if (det.banca === "-") {
+    $("a[href]").each((_, el) => {
+      if (det.banca !== "-") return;
+      const href = ($(el).attr("href") || "").toLowerCase();
+      for (const [dominio, nome] of Object.entries(DOMINIO_BANCA)) {
+        if (href.includes(dominio)) {
+          det.banca = nome;
+          return false; // break do each
+        }
+      }
+    });
+  }
+
+  // ── Tenta identificar banca pelo texto do link (ex: "Acesse o site da IDECAN") ──
+  if (det.banca === "-") {
+    $("a").each((_, el) => {
+      if (det.banca !== "-") return;
+      const textoLink = ($(el).text() || "").toUpperCase();
+      for (const b of BANCAS_CONHECIDAS) {
+        if (textoLink.includes(b.toUpperCase())) {
+          det.banca = b;
+          return false;
+        }
+      }
+    });
+  }
 
   return det;
 }
