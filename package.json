@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "worker": "node src/worker/agendador.mjs"
   },
   "dependencies": {
     "next": "15.2.6",
@@ -16,7 +17,9 @@
     "@supabase/supabase-js": "^2.43.4",
     "satori": "^0.10.13",
     "@resvg/resvg-js": "^2.6.2",
-    "html2canvas": "^1.4.1"
+    "html2canvas": "^1.4.1",
+    "playwright": "^1.44.0",
+    "sharp": "^0.33.4"
   },
   "devDependencies": {
     "@types/node": "^20",

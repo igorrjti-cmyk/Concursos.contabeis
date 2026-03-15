@@ -3,34 +3,61 @@
 -- (Dashboard → SQL Editor → New query → cole e Execute)
 -- ============================================================
 
--- ── 1. Tabela de cache dos concursos scrapeados ─────────────
+-- ── 1. Cache dos concursos scrapeados ──────────────────────
 CREATE TABLE IF NOT EXISTS cache_concursos (
-  chave       TEXT PRIMARY KEY,          -- ex: 'concursos:v2'
-  dados       JSONB         NOT NULL,    -- array de Concurso[]
+  chave       TEXT PRIMARY KEY,
+  dados       JSONB         NOT NULL,
   atualizado  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 
--- ── 2. Tabela de histórico de posts ────────────────────────
+-- ── 2. Histórico de posts publicados ───────────────────────
 CREATE TABLE IF NOT EXISTS historico_posts (
   id          BIGSERIAL     PRIMARY KEY,
-  concurso_id TEXT          NOT NULL,   -- slug do concurso
+  concurso_id TEXT          NOT NULL,
   cargo       TEXT          NOT NULL,
   orgao       TEXT          NOT NULL,
   estado      TEXT          NOT NULL,
   posted_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 
--- Índice para busca rápida por concurso_id
 CREATE INDEX IF NOT EXISTS idx_historico_concurso_id
   ON historico_posts (concurso_id, posted_at DESC);
 
--- ── 3. Row Level Security (RLS) ────────────────────────────
--- Bloqueamos acesso público — só a service_role key pode ler/gravar
+-- ── 3. Fila de agendamentos para o Instagram ───────────────
+--   status: 'pendente' | 'publicando' | 'publicado' | 'erro'
+--   formato: 'feed' | 'stories'
+--   agendado_para: NULL = publicar o quanto antes
+CREATE TABLE IF NOT EXISTS agendamentos (
+  id              BIGSERIAL     PRIMARY KEY,
+  concurso_id     TEXT          NOT NULL,
+  cargo           TEXT          NOT NULL,
+  orgao           TEXT          NOT NULL,
+  estado          TEXT          NOT NULL,
+  legenda         TEXT          NOT NULL,
+  formato         TEXT          NOT NULL DEFAULT 'feed',
+  status          TEXT          NOT NULL DEFAULT 'pendente',
+  agendado_para   TIMESTAMPTZ,
+  publicado_em    TIMESTAMPTZ,
+  erro_msg        TEXT,
+  tentativas      INT           NOT NULL DEFAULT 0,
+  criado_em       TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agendamentos_status
+  ON agendamentos (status, agendado_para ASC NULLS FIRST);
+
+CREATE INDEX IF NOT EXISTS idx_agendamentos_concurso
+  ON agendamentos (concurso_id);
+
+-- ── 4. Row Level Security ───────────────────────────────────
 ALTER TABLE cache_concursos  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE historico_posts  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agendamentos     ENABLE ROW LEVEL SECURITY;
 
--- Políticas permissivas para a service_role (usada pelo servidor Next.js)
--- A service_role bypassa RLS por padrão no Supabase — não é necessário
--- criar políticas explícitas para ela. Mas criamos deny-all para anon:
-CREATE POLICY "deny anon cache"    ON cache_concursos  FOR ALL TO anon USING (false);
-CREATE POLICY "deny anon historico" ON historico_posts FOR ALL TO anon USING (false);
+-- service_role bypassa RLS — bloqueamos apenas anon
+CREATE POLICY "deny anon cache"
+  ON cache_concursos FOR ALL TO anon USING (false);
+CREATE POLICY "deny anon historico"
+  ON historico_posts FOR ALL TO anon USING (false);
+CREATE POLICY "deny anon agendamentos"
+  ON agendamentos FOR ALL TO anon USING (false);
