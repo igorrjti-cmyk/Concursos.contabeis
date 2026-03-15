@@ -556,12 +556,35 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
   }
   const textoNorm = converterDataExtenso(texto);
 
+  // Tenta primeiro na seção de cronograma (mais preciso)
+  const idxCrono = textoNorm.search(/cronograma\s+do\s+concurso/i);
+  if (idxCrono !== -1) {
+    const secaoCrono = textoNorm.substring(idxCrono, idxCrono + 2000);
+    const resCronoPro = [
+      /aplica[cç][aã]o\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+      /provas?\s+objetivas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+      /realiza[cç][aã]o\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+      /prova\s+escrita[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    ];
+    for (const re of resCronoPro) {
+      const m = secaoCrono.match(re);
+      if (m?.[1]) { out.dataProva = m[1]; break; }
+    }
+    if (out.dataProva === "-") {
+      // fallback: primeira data na seção cronograma após "prova"
+      const mCrono = secaoCrono.match(/prova[^.]{0,60}(\d{2}\/\d{2}\/\d{4})/i);
+      if (mCrono?.[1]) out.dataProva = mCrono[1];
+    }
+  }
+
   // Testa no texto com datas convertidas (pega "17 de maio de 2026")
   const provaRe = [
     /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+de\s+realiza[cç][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
     /provas?\s+(?:objetivas?|escritas?|pr[áa]ticas?)\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
-    /previstas?\s+para\s+(?:ser(?:em)?\s+)?aplicadas?\s+em\s+(\d{2}\/\d{2}\/\d{4})/i,
+    /previstas?\s+para\s+(?:ser(?:em)?\s+)?aplicadas?\s+(?:em|no\s+dia)\s+(\d{2}\/\d{2}\/\d{4})/i,
+    /previstas?\s+para\s+sua\s+realiza[cç][aã]o\s+(?:em|no\s+dia)\s+(\d{2}\/\d{2}\/\d{4})/i,
+    /ser[aã]o\s+aplicadas?\s+(?:em|no\s+dia)\s+(\d{2}\/\d{2}\/\d{4})/i,
     /aplicadas?\s+na\s+cidade\s+de\s+[^,]{1,40},\s+no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
     /no\s+dia\s+(\d{2}\/\d{2}\/\d{4})[^\n]{0,60}prova/i,
     /prova[^\n]{0,60}no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,

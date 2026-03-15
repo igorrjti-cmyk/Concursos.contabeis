@@ -200,8 +200,57 @@ function extrairBanca(texto: string): string {
   return "-";
 }
 
+// ─── Extrai cronograma completo da seção CRONOGRAMA do edital ────────────────
+// Editais geralmente têm uma tabela como:
+// "CRONOGRAMA DO CONCURSO PÚBLICO"
+// "Aplicação das Provas Objetivas ............. 29/03/2026"
+// "Divulgação do Resultado Final .............. 15/04/2026"
+function extrairCronograma(textoNorm: string): { dataProva: string; dataResultado: string } {
+  let dataProva = "-";
+  let dataResultado = "-";
+
+  // Localiza seção de cronograma
+  const idxCrono = textoNorm.search(/cronograma\s+do\s+concurso/i);
+  if (idxCrono === -1) return { dataProva, dataResultado };
+
+  // Pega até 2000 chars após "CRONOGRAMA DO CONCURSO"
+  const secao = textoNorm.substring(idxCrono, idxCrono + 2000);
+
+  // Padrões de linhas de cronograma (com ou sem pontinhos)
+  const provaReCrono = [
+    /aplica[cç][aã]o\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?\s+objetivas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    /realiza[cç][aã]o\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    /data\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    /prova\s+escrita[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+  ];
+
+  for (const re of provaReCrono) {
+    const m = secao.match(re);
+    if (m?.[1]) { dataProva = m[1]; break; }
+  }
+
+  const resReCrono = [
+    /divulga[cç][aã]o\s+(?:do\s+)?resultado\s+(?:final|definitivo)[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    /resultado\s+(?:final|definitivo)[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    /homologa[cç][aã]o[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    /gabarito\s+(?:oficial\s+)?(?:definitivo\s+)?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+  ];
+
+  for (const re of resReCrono) {
+    const m = secao.match(re);
+    if (m?.[1] && m[1] !== dataProva) { dataResultado = m[1]; break; }
+  }
+
+  return { dataProva, dataResultado };
+}
+
 // ─── Data de prova ────────────────────────────────────────────────────────────
 function extrairDataProva(textoNorm: string): string {
+  // Tenta cronograma primeiro (mais preciso)
+  const crono = extrairCronograma(textoNorm);
+  if (crono.dataProva !== "-") return crono.dataProva;
+
   const padroes = [
     /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+de\s+realiza[cç][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
@@ -225,6 +274,10 @@ function extrairDataProva(textoNorm: string): string {
 
 // ─── Data de resultado ────────────────────────────────────────────────────────
 function extrairDataResultado(textoNorm: string, dataProva: string): string {
+  // Tenta cronograma primeiro
+  const crono = extrairCronograma(textoNorm);
+  if (crono.dataResultado !== "-" && crono.dataResultado !== dataProva) return crono.dataResultado;
+
   const padroes = [
     /divulga[cç][aã]o\s+(?:do\s+)?(?:resultado|gabarito)\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /resultado\s+(?:final|definitivo)\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,

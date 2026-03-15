@@ -27,7 +27,7 @@ export async function GET(req: Request) {
     const { data: cacheRow } = await sb
       .from("cache_concursos")
       .select("dados")
-      .eq("chave", "concursos:v5")
+      .eq("chave", "concursos:v7")
       .single<{ dados: { concursos: Concurso[] } }>();
 
     const concursos: Concurso[] = cacheRow?.dados?.concursos ?? [];
