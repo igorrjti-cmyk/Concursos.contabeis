@@ -18,8 +18,8 @@ interface CacheRow {
 
 // GET — retorna concursos (do cache ou scraping ao vivo)
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const forceRefresh = searchParams.get("refresh") === "1";
+  const url = new URL(req.url);
+  const forceRefresh = url.searchParams.get("refresh") === "1";
 
   try {
     const sb = getSupabase();
