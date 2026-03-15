@@ -8,7 +8,10 @@ const EMOJI_BANCA: Record<string, string> = {
 };
 
 const EMOJI_STATUS: Record<string, string> = {
-  "Inscrições Abertas": "🟢", Previsto: "🟡", Encerrado: "🔴",
+  "Inscrições Abertas": "🟢",
+  "Em Andamento":       "🔵",
+  Previsto:             "🟡",
+  Encerrado:            "🔴",
 };
 
 const ESTADO_HASHTAG: Record<string, string> = {

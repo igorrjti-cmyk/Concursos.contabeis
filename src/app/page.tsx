@@ -6,12 +6,15 @@ import { gerarLegenda } from "@/lib/legenda";
 import type { Concurso } from "@/lib/scraper";
 import type { PostHistorico } from "@/app/api/historico/route";
 
-type FilterStatus = "todos" | "Inscrições Abertas" | "Previsto" | "Encerrado";
+type FilterStatus = "todos" | "Inscrições Abertas" | "Em Andamento" | "Previsto";
 type TabType = "lista" | "cards" | "historico";
 type CardFormato = "feed" | "stories";
 
 const STATUS_DOT: Record<string, string> = {
-  "Inscrições Abertas": "#00C896", Previsto: "#FFB800", Encerrado: "#FF4B4B",
+  "Inscrições Abertas": "#00C896",
+  "Em Andamento":       "#60A5FA",
+  Previsto:             "#FFB800",
+  Encerrado:            "#FF4B4B",
 };
 
 const UFS = ["Todos","AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO","Nacional"];
@@ -107,6 +110,7 @@ export default function Home() {
   const stats = {
     total: concursos.length,
     abertas: concursos.filter(c => c.status === "Inscrições Abertas").length,
+    emAndamento: concursos.filter(c => c.status === "Em Andamento").length,
     previstos: concursos.filter(c => c.status === "Previsto").length,
     urgentes: concursos.filter(c => c.diasRestantes >= 0 && c.diasRestantes <= 7).length,
   };
@@ -205,10 +209,11 @@ export default function Home() {
       {/* ── STATS ── */}
       <div style={{ display:"flex", borderBottom:"1px solid rgba(255,255,255,.06)", overflowX:"auto" }} className="stats-bar">
         {[
-          { label:"Total",              value:stats.total,    color:"#00C896" },
-          { label:"Inscrições Abertas", value:stats.abertas,  color:"#00C896" },
-          { label:"Previstos",          value:stats.previstos,color:"#FFB800" },
-          { label:"⚡ Urgentes (≤7d)",  value:stats.urgentes, color:"#FF4B4B" },
+          { label:"Total",              value:stats.total,       color:"#00C896" },
+          { label:"Inscrições Abertas", value:stats.abertas,     color:"#00C896" },
+          { label:"Em Andamento",       value:stats.emAndamento, color:"#60A5FA" },
+          { label:"Previstos",          value:stats.previstos,   color:"#FFB800" },
+          { label:"⚡ Urgentes (≤7d)",  value:stats.urgentes,    color:"#FF4B4B" },
         ].map(s => (
           <div key={s.label} style={{ padding:"14px 22px", borderRight:"1px solid rgba(255,255,255,.06)", flexShrink:0 }} className="stat-item">
             <div style={{ color:"rgba(255,255,255,.3)", fontSize:9, letterSpacing:1 }}>{s.label.toUpperCase()}</div>
@@ -236,7 +241,7 @@ export default function Home() {
             style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#fff", borderRadius:9, padding:"7px 12px", fontSize:12, outline:"none", minWidth:200, flex:1 }}
           />
           {/* Status */}
-          {(["todos","Inscrições Abertas","Previsto","Encerrado"] as FilterStatus[]).map(f => (
+          {(["todos","Inscrições Abertas","Em Andamento","Previsto"] as FilterStatus[]).map(f => (
             <button key={f} onClick={() => setFilter(f)} style={{ background:filter===f?"rgba(0,200,150,.12)":"transparent", border:`1px solid ${filter===f?"#00C896":"rgba(255,255,255,.1)"}`, color:filter===f?"#00C896":"rgba(255,255,255,.4)", borderRadius:18, padding:"5px 11px", cursor:"pointer", fontSize:11, fontWeight:600, whiteSpace:"nowrap" }}>
               {f === "todos" ? "Todos" : f}
             </button>

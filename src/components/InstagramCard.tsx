@@ -12,6 +12,7 @@ interface Props {
 
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   "Inscrições Abertas": { bg: "#00C896", color: "#002D1F" },
+  "Em Andamento":       { bg: "#60A5FA", color: "#0A1628" },
   Previsto:             { bg: "#FFB800", color: "#2D1F00" },
   Encerrado:            { bg: "#FF4B4B", color: "#fff"    },
 };

@@ -18,7 +18,7 @@ export interface Concurso {
   nivel: string;
   dataProva: string;
   dataResultado: string;
-  status: "Inscrições Abertas" | "Previsto" | "Encerrado";
+  status: "Inscrições Abertas" | "Em Andamento" | "Previsto" | "Encerrado";
   dataCaptura: string;
 }
 
@@ -103,8 +103,20 @@ function detectStatus(inscricao: string): Concurso["status"] {
   if (!inscricao || inscricao === "—") return "Previsto";
   const dias = calcDiasRestantes(inscricao);
   if (dias === -1) return "Previsto";
-  if (dias < 0) return "Encerrado";
+  if (dias < 0) return "Em Andamento"; // inscrição encerrou — aguardando resultado
   return "Inscrições Abertas";
+}
+
+// Refina o status após ter dataResultado:
+// "Em Andamento" → "Encerrado" se resultado já saiu
+function refinarStatus(status: Concurso["status"], dataResultado: string): Concurso["status"] {
+  if (status !== "Em Andamento") return status;
+  if (!dataResultado || dataResultado === "—") return "Em Andamento";
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const m = dataResultado.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return "Em Andamento";
+  const dataRes = new Date(+m[3], +m[2]-1, +m[1]);
+  return dataRes < hoje ? "Encerrado" : "Em Andamento";
 }
 
 function extrairDetalhes(texto: string) {
@@ -144,87 +156,106 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
   const $ = cheerio.load(html);
   const items: Partial<Concurso>[] = [];
 
-  // ── Estratégia: usar cada <a href="/noticias/..."> como âncora de um bloco ──
+  // ── Estrutura real confirmada do pciconcursos (/vagas/contador etc.) ──────
   //
-  // Estrutura real do HTML (confirmada):
+  // Cada concurso é um bloco com:
+  //   <a href="/noticias/slug-longo" title="Órgão - UF faz algo">Órgão</a>
+  //   <img .../>
+  //   UF
+  //   N vagas até R$ X.XXX,XX
+  //   Cargo1, Cargo2          ← pode ser "Vários Cargos"
+  //   Nível / Nível
+  //   DD/MM a                 ← data QUEBRADA em duas linhas
+  //   DD/MM/YYYY
   //
-  //  <a href="/noticias/slug" title="Órgão - UF ...">Órgão</a>
-  //  <img .../>
-  //  UF\n
-  //  "N vagas até R$ X" \n
-  //  "Cargo1, Cargo2"\n
-  //  "Nível"\n
-  //  "DD/MM a\nDD/MM/YYYY"   ← QUEBRADO EM DUAS LINHAS — ponto crítico
-  //
-  // Solução: pegar o texto do bloco-pai (parent) de cada link de notícia,
-  // que contém tudo numa única string — aí o regex cruza as quebras de linha.
+  // Problemas anteriores:
+  //   1. O menu tem <a href="/noticias/">notícias</a> → filtrado abaixo exigindo slug
+  //   2. Cargo extraído de regex que nunca batia → agora usa split direto no texto
 
   $("a[href*='/noticias/']").each((_, el) => {
     const $a   = $(el);
     const href = $a.attr("href") || "";
-    if (!href.includes("/noticias/")) return;
 
-    // Nome do órgão = texto do link
+    // Filtra só links de notícias com slug real (ex: /noticias/camara-de-sabara-...)
+    // Exclui /noticias/ sozinho (link do menu) e /noticias/nacional/ etc.
+    if (!href.match(/\/noticias\/[a-z0-9][a-z0-9-]{5,}/)) return;
+
     const orgao = $a.text().trim();
     if (!orgao || orgao.length < 4) return;
 
-    // Link completo
     const linkNoticia = href.startsWith("http") ? href : BASE_URL + href;
 
-    // Pega o container pai — o bloco que envolve todos os dados do concurso.
-    // Sobe até encontrar um elemento que contenha o padrão "vagas até R$"
+    // Sobe na árvore DOM até encontrar o bloco que contém "até R$"
     let $bloco = $a.parent();
-    for (let nivel = 0; nivel < 5; nivel++) {
+    for (let n = 0; n < 6; n++) {
       if ($bloco.text().includes("até R$")) break;
       $bloco = $bloco.parent();
     }
+    if (!$bloco.text().includes("até R$")) return;
 
-    // Texto do bloco inteiro, normalizando quebras de linha em espaço
-    const blocoTexto = $bloco.text()
-      .replace(/\n+/g, " ")   // junta linhas — resolve o "25/05 a\n25/06/2026"
-      .replace(/\s{2,}/g, " ")
+    // Normaliza o texto do bloco: junta linhas para resolver "25/05 a\n25/06/2026"
+    const raw = $bloco.text()
+      .replace(/\r/g, "")
+      .replace(/\n+/g, "\n")
       .trim();
 
+    // Divide em linhas limpas (remove vazias e o nome do órgão repetido)
+    const linhas = raw
+      .split("\n")
+      .map(l => l.trim())
+      .filter(l => l.length > 0 && l !== orgao);
+
     // ── Estado (UF) ──────────────────────────────────────────────────────────
-    const ufMatch = blocoTexto.match(/\b([A-Z]{2})\b/);
-    const uf = ufMatch ? ufMatch[1] : "Nacional";
+    // Primeira linha que seja exatamente 2 letras maiúsculas
+    const uf = linhas.find(l => /^[A-Z]{2}$/.test(l)) ?? "Nacional";
 
     // ── Vagas e salário ───────────────────────────────────────────────────────
-    const vagasMatch = blocoTexto.match(
-      /(\d+\s+vagas?\s*(?:\+\s*CR)?|vagas?|cadastro\s+reserva)\s+até\s+R\$\s*([\d.,]+)/i
+    // Linha que contém "vagas até R$" ou "cadastro reserva até R$"
+    const vagasLinha = linhas.find(l =>
+      /(\d+\s+vagas?|cadastro\s+reserva)\s+até\s+R\$/i.test(l)
     );
-    if (!vagasMatch) return; // sem este dado, não é um bloco de concurso válido
+    if (!vagasLinha) return;
+
+    const vagasMatch = vagasLinha.match(
+      /^(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+até\s+R\$\s*([\d.,]+)/i
+    );
+    if (!vagasMatch) return;
+
     const vagasStr   = vagasMatch[1].replace(/\s+/g, " ").trim();
     const salarioStr = "R$ " + vagasMatch[2];
 
+    const idxVagas = linhas.indexOf(vagasLinha);
+
     // ── Cargo ─────────────────────────────────────────────────────────────────
-    // Vem logo após "até R$ X.XXX,XX" no texto: é a próxima frase relevante
-    const apósSalario = blocoTexto.slice(blocoTexto.indexOf(vagasMatch[0]) + vagasMatch[0].length).trim();
-    // Primeira linha não-vazia antes do nível
-    const cargoMatch = apósSalario.match(/^([^/\d][^/]{2,80?}?)(?:\s+(?:Fundamental|Médio|Superior|Técnico))/i);
-    const cargo = cargoMatch ? cargoMatch[1].trim() : "Vários Cargos";
+    // Linha imediatamente após a linha de vagas
+    const cargoLinha = linhas[idxVagas + 1] ?? "";
+    // Cargo é texto simples — NÃO contém "/" nem parece nível de escolaridade
+    const ehNivel = /^(Fundamental|Médio|Superior|Técnico)/i.test(cargoLinha);
+    const cargo = (!ehNivel && cargoLinha.length > 1) ? cargoLinha : "Vários Cargos";
 
     // ── Nível ─────────────────────────────────────────────────────────────────
-    const nivelMatch = blocoTexto.match(/((?:Fundamental|Médio|Superior|Técnico)(?:\s*\/\s*(?:Fundamental|Médio|Superior|Técnico))*)/i);
-    const nivelRaw = nivelMatch ? nivelMatch[1] : "";
+    // Linha que começa com uma palavra de nível de escolaridade
+    const nivelLinha = linhas.find(l => /^(Fundamental|Médio|Superior|Técnico)/i.test(l)) ?? "";
 
     // ── Período de inscrição ─────────────────────────────────────────────────
-    // Regex que captura tanto "DD/MM a DD/MM/YYYY" quanto "DD/MM/YYYY" isolado
-    // O "a" pode estar separado por espaço — captura cruzando a quebra de linha
-    const periodoMatch = blocoTexto.match(
+    // Pode estar em 1 linha ("DD/MM a DD/MM/YYYY") ou 2 ("DD/MM a" + "DD/MM/YYYY")
+    // Juntamos todas as linhas após o nível em uma string para o regex cruzar
+    const idxNivel = nivelLinha ? linhas.indexOf(nivelLinha) : idxVagas + 2;
+    const restoTexto = linhas.slice(idxNivel + 1).join(" ");
+
+    const periodoMatch = restoTexto.match(
       /(\d{2}\/\d{2}(?:\/\d{4})?)\s+a\s+(\d{2}\/\d{2}\/\d{4})/
     );
-    const dataUnicaMatch = !periodoMatch && blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
+    const dataUnicaMatch = restoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
 
-    let inscricao   = "—";
+    let inscricao    = "—";
     let inscricaoAte = "Ver edital";
 
     if (periodoMatch) {
-      // Normaliza início: se só "DD/MM", adiciona ano da data final
       const anoFim = periodoMatch[2].split("/")[2];
       const inicio = periodoMatch[1].includes("/20")
         ? periodoMatch[1]
-        : periodoMatch[1] + "/" + anoFim;
+        : `${periodoMatch[1]}/${anoFim}`;
       inscricao    = `${inicio} a ${periodoMatch[2]}`;
       inscricaoAte = periodoMatch[2];
     } else if (dataUnicaMatch) {
@@ -239,7 +270,7 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
       vagas: vagasStr,
       salario: salarioStr,
       cargo,
-      nivel: detectNivel(nivelRaw),
+      nivel: detectNivel(nivelLinha),
       inscricao,
       inscricaoAte,
       diasRestantes: calcDiasRestantes(inscricaoAte),
@@ -269,11 +300,12 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
   const seen = new Set<string>();
   const brutos: Partial<Concurso>[] = [];
 
-  // Sequencial com timeout por request
+  // Sequencial com timeout por request — ignora encerrados direto na listagem
   for (const url of VAGAS_URLS) {
     try {
       const items = await scrapeListagem(url);
       for (const item of items) {
+        if (item.status === "Encerrado") continue; // descarta antes de entrar no banco
         const key = item.id || slugify((item.cargo||"")+(item.orgao||""));
         if (!seen.has(key) && item.orgao && item.orgao !== "—") {
           seen.add(key); brutos.push({ ...item, id: key });
@@ -293,6 +325,9 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     let det = { dataProva: "—", dataResultado: "—", banca: "—", linkEdital: "" };
     if (i < LIMITE && item.linkNoticia) det = await scrapeDetalhe(item.linkNoticia);
 
+    const statusFinal = refinarStatus(item.status || "Inscrições Abertas", det.dataResultado);
+    if (statusFinal === "Encerrado") continue; // descarta após saber que resultado já saiu
+
     completos.push({
       id: item.id!,
       cargo: item.cargo || "—",
@@ -309,13 +344,14 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       nivel: item.nivel || "Superior",
       dataProva: det.dataProva,
       dataResultado: det.dataResultado,
-      status: item.status || "Inscrições Abertas",
+      status: statusFinal,
       dataCaptura: new Date().toISOString(),
     });
   }
 
+  // Ordena: Inscrições Abertas → Em Andamento → Previsto
   return completos.sort((a, b) => {
-    const o = { "Inscrições Abertas": 0, Previsto: 1, Encerrado: 2 };
+    const o: Record<string, number> = { "Inscrições Abertas": 0, "Em Andamento": 1, Previsto: 2 };
     return (o[a.status] ?? 2) - (o[b.status] ?? 2);
   });
 }
