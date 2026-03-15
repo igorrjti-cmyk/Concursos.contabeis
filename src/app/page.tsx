@@ -787,7 +787,9 @@ export default function Home() {
           </div>
         )}
 
+        
         {/* ── HISTÓRICO ── */}
+
         {tab === "historico" && (
           <div style={{ maxWidth: 700 }}>
             <p style={{ color: "rgba(255,255,255,.25)", fontSize: 11, marginBottom: 20 }}>

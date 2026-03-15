@@ -37,6 +37,7 @@ export function statusDisplay(s: string): string {
 
 const BASE_URL = "https://www.pciconcursos.com.br";
 
+// URLs de vagas ativas (inscrições abertas e previstos)
 const VAGAS_URLS = [
   "/vagas/contador",
   "/vagas/contadora",
@@ -49,6 +50,7 @@ const VAGAS_URLS = [
   "/vagas/contador-municipal",
 ];
 
+
 const FETCH_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
   Accept: "text/html,application/xhtml+xml",
@@ -59,22 +61,37 @@ const TIMEOUT_MS = 8000;
 
 // ─── Bancas conhecidas (ordem importa: mais específico primeiro) ───────────────
 const BANCAS_CONHECIDAS = [
-  // Nacionais grandes
+  // ── Nacionais grandes ─────────────────────────────────────────────────────
   "CEBRASPE", "CESPE", "FGV", "FCC", "VUNESP", "IBFC", "IDECAN", "AOCP",
   "FUNDATEC", "FEPESE", "IADES", "QUADRIX", "NUCEPE", "CONSULPLAN",
-  // Regionais / médias
-  "OBJETIVA", "IBAM", "IMESO", "SELECON", "FAFIPA", "AVANCASP",
-  "FAFIPE", "FADESP", "FUNRIO", "INSTITUTO ACESSO", "ACESSO",
-  "ABCP", "CAP CONCURSOS", "CAP", "COPS", "COMVEST",
-  "INSTITUTO AOCP", "INSTITUTO MAIS", "MAIS", "RBO", "LEGALLE",
-  "AMEOSC", "FUMARC", "COVEST", "COMPERVE", "FUNCAB",
-  "COGNUS", "ITAME", "EXATUS", "COTEC", "MOVENS",
-  "IDIB", "IDCAN", "IFB", "IBAM", "UNIFA",
+
+  // ── Confirmadas nos editais reais dos concursos monitorados ───────────────
+  "FADENOR", "COTEC",          // Prefeitura de Paracatu MG (FADENOR/COTEC são o mesmo setor)
+  "CAP CONCURSOS",             // Câmara de Piedade do Rio Grande MG
+  "NOSSO RUMO",                // Prefeitura de São João da Boa Vista SP
+  "FAFIPA",                    // Câmara de Tamboara PR
+  "IMESO",                     // Câmara de Sabarà MG / Câmara de Lamim MG
+  "ABCP",                      // Câmara de Piranguçu MG
+  "OBJETIVA",                  // Câmara de Conselheiro Pena MG
+
+  // ── Regionais / médias ────────────────────────────────────────────────────
+  "IBAM", "SELECON", "AVANCASP",
+  "FAFIPE", "FADESP", "FUNRIO",
+  "INSTITUTO ACESSO", "ACESSO",
+  "CAP", "COPS", "COMVEST",
+  "INSTITUTO AOCP", "INSTITUTO MAIS",
+  "RBO", "LEGALLE", "AMEOSC",
+  "FUMARC", "COVEST", "COMPERVE", "FUNCAB",
+  "COGNUS", "ITAME", "EXATUS", "MOVENS",
+  "IDIB", "IDCAN", "IFB", "UNIFA",
   "FAURGS", "UFMT", "UFAL", "UFRN", "UFG",
   "INSTITUTO CIDADES", "CIDADES",
-  "SOLUÇÃO CONCURSOS", "SOLUCAO",
-  "NOVA CONCURSOS", "NOVA",
-  "INSTITUTO SELECON", "SELECON",
+  "SOLUCAO", "NOVA CONCURSOS",
+  "INSTITUTO NOSSO RUMO",
+  "INSTITUTO SELECON",
+  "MAIS CONCURSOS",
+  "INTELECTUS", "UFES", "UFRR",
+  "PROCESSO SELETIVO UNIFICADO", "PSU",
 ];
 
 // ─── Termos que identificam cargos CONTÁBEIS ─────────────────────────────────
@@ -581,6 +598,7 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
   const seen   = new Set<string>();
   const brutos: Partial<Concurso>[] = [];
 
+  // ── 1. Vagas ativas (inscrições abertas + previstos) ──────────────────────
   for (const url of VAGAS_URLS) {
     try {
       const items = await scrapeListagem(url);
@@ -596,6 +614,7 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       continue;
     }
   }
+
 
   if (brutos.length === 0) return getFallbackData();
 
@@ -654,8 +673,8 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       nivel:          item.nivel || "Superior",
       dataProva:      det.dataProva,
       dataResultado:  det.dataResultado,
-      status:         item.status as Concurso["status"],
-      dataCaptura:    new Date().toISOString(),
+      status:          item.status as Concurso["status"],
+      dataCaptura:     new Date().toISOString(),
     });
   }
 
