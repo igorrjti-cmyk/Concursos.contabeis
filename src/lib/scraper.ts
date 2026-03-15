@@ -529,19 +529,7 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
   }
   const textoNorm = converterDataExtenso(texto);
 
-  // Data da prova — testa no texto original E no texto com datas convertidas
-  const provaRe = [
-    // Padrões com DD/MM/AAAA
-    /provas?\s+(?:objetiva[s]?|escrita[s]?|pratica[s]?)(?:[^.]{0,80}?)(\d{2}\/\d{2}\/\d{4})/i,
-    /aplicac[aã]o\s+das?\s+provas?(?:[^.]{0,60}?)(\d{2}\/\d{2}\/\d{4})/i,
-    /data\s+(?:prevista\s+)?(?:de\s+)?(?:realiz|aplicac)[^.]{0,40}?(\d{2}\/\d{2}\/\d{4})/i,
-    /provas?\s*:\s*(\d{2}\/\d{2}\/\d{4})/i,
-    /previstas?\s+para\s+(?:ser(?:em)?\s+)?aplicadas?\s+em\s+(\d{2}\/\d{2}\/\d{4})/i,
-    /aplicadas?\s+(?:na\s+data\s+(?:prevista\s+)?de\s+)?(\d{2}\/\d{2}\/\d{4})/i,
-    /data\s+prov[aá]vel\s+de\s+(\d{2}\/\d{2}\/\d{4})/i,
-    /(\d{2}\/\d{2}\/\d{4})[^.]{0,30}?prova/i,
-  ];
-  // Testa primeiro no texto com datas convertidas (pega "17 de maio de 2026")
+  // Testa no texto com datas convertidas (pega "17 de maio de 2026")
   const provaRe = [
     /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+de\s+realiza[cç][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
