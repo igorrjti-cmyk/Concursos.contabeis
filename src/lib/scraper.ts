@@ -68,13 +68,19 @@ const BANCAS_CONHECIDAS = [
   "FUNDATEC", "FEPESE", "IADES", "QUADRIX", "NUCEPE", "CONSULPLAN",
 
   // ── Confirmadas nos editais reais dos concursos monitorados ───────────────
-  "FADENOR", "COTEC",          // Prefeitura de Paracatu MG (FADENOR/COTEC são o mesmo setor)
+  "FADENOR",                   // Prefeitura de Paracatu MG
   "CAP CONCURSOS",             // Câmara de Piedade do Rio Grande MG
   "NOSSO RUMO",                // Prefeitura de São João da Boa Vista SP
+  "INSTITUTO NOSSO RUMO",      // variante
   "FAFIPA",                    // Câmara de Tamboara PR
   "IMESO",                     // Câmara de Sabarà MG / Câmara de Lamim MG
   "ABCP",                      // Câmara de Piranguçu MG
-  "OBJETIVA",                  // Câmara de Conselheiro Pena MG
+  "AMAUC",                     // Câmara de Ipumirim SC
+  "ACESSE CONCURSO",           // IPRECAL SC
+  "IBGP",                      // Câmara de Igaratinga MG
+  "CONSCAM",                   // SAAE de Lençóis Paulista SP
+  "CONSULPLAN",                // CRC-CE — Instituto Consulplan
+  "INSTITUTO CONSULPLAN",      // variante Consulplan
 
   // ── Regionais / médias ────────────────────────────────────────────────────
   "IBAM", "SELECON", "AVANCASP",
@@ -85,15 +91,15 @@ const BANCAS_CONHECIDAS = [
   "RBO", "LEGALLE", "AMEOSC",
   "FUMARC", "COVEST", "COMPERVE", "FUNCAB",
   "COGNUS", "ITAME", "EXATUS", "MOVENS",
-  "IDIB", "IDCAN", "IFB", "UNIFA",
+  "COTEC", "IDIB", "IDCAN", "IFB", "UNIFA",
   "FAURGS", "UFMT", "UFAL", "UFRN", "UFG",
-  "INSTITUTO CIDADES", "CIDADES",
   "SOLUCAO", "NOVA CONCURSOS",
-  "INSTITUTO NOSSO RUMO",
   "INSTITUTO SELECON",
   "MAIS CONCURSOS",
   "INTELECTUS", "UFES", "UFRR",
-  "PROCESSO SELETIVO UNIFICADO", "PSU",
+  // ATENÇÃO: "OBJETIVA" e "CIDADES" removidos — são termos genéricos
+  // que aparecem em "prova objetiva" e URLs do PCI, causando falsos positivos.
+  // A banca Objetiva Concursos é identificada pelo domínio objetiva.org
 ];
 
 // ─── Mapeamento de domínio de site → nome da banca ────────────────────────────
@@ -113,8 +119,14 @@ const DOMINIO_BANCA: Record<string, string> = {
   "quadrix.org.br":         "QUADRIX",
   "nucepe.uespi.br":        "NUCEPE",
   "consulplan.com":         "CONSULPLAN",
-  "objetiva.org":           "OBJETIVA",
-  "objetiva.com.br":        "OBJETIVA",
+  "objetiva.org":           "OBJETIVA CONCURSOS",
+  "objetiva.com.br":        "OBJETIVA CONCURSOS",
+  "amauc.org.br":           "AMAUC",
+  "acesseconcurso.com.br":  "ACESSE CONCURSO",
+  "ibgp.org.br":            "IBGP",
+  "conscam.com.br":         "CONSCAM",
+  "consulplan.com.br":      "INSTITUTO CONSULPLAN",
+  "srdigitalizacoes.com.br":"S. R. DIGITALIZAÇÕES",
   "imeso.com.br":           "IMESO",
   "fafipa.br":              "FAFIPA",
   "fundacaofafipa.org.br":  "FAFIPA",
@@ -267,11 +279,24 @@ export function filtrarCargosContabeis(cargo: string): string {
  * - Remove sufixos desnecessários
  */
 function normalizarNomeCargo(cargo: string): string {
-  // Palavras que ficam em minúsculo no título (preposições/artigos)
-  const minusculas = new Set(["de", "da", "do", "das", "dos", "e", "em", "na", "no", "nas", "nos", "a", "o", "as", "os"]);
+  // Remove prefixos como "O Cargo de", "Cargo:", "o cargo de"
+  const prefixos = [
+    /^o\s+cargo\s+de\s+/i,
+    /^cargo\s*[:\-]\s*/i,
+    /^cargo\s+de\s+/i,
+    /^função\s+de\s+/i,
+    /^funcao\s+de\s+/i,
+    /^vaga\s+(?:de\s+|para\s+)?/i,
+  ];
+  let c = cargo.trim();
+  for (const re of prefixos) {
+    c = c.replace(re, "");
+  }
+  c = c.trim();
 
-  return cargo
-    .trim()
+  // Title case respeitando preposições
+  const minusculas = new Set(["de", "da", "do", "das", "dos", "e", "em", "na", "no", "nas", "nos", "a", "o", "as", "os"]);
+  return c
     .toLowerCase()
     .split(" ")
     .map((word, idx) => {

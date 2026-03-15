@@ -45,11 +45,20 @@ function normalizarDatas(texto: string): string {
 
 // ─── Bancas conhecidas ────────────────────────────────────────────────────────
 const BANCAS_PDF = [
+  // Confirmadas em editais reais
+  "AMAUC",                   // Câmara de Ipumirim SC
+  "ACESSE CONCURSO",         // IPRECAL SC
+  "IBGP",                    // Câmara de Igaratinga MG
+  "CONSCAM",                 // SAAE de Lençóis Paulista SP
+  "INSTITUTO CONSULPLAN",    // CRC-CE
+  "S. R. DIGITALIZAÇÕES",    // Câmara de Itariri SP
   "FADENOR", "CAP CONCURSOS", "NOSSO RUMO", "INSTITUTO NOSSO RUMO",
   "FAFIPA", "FUNDAÇÃO FAFIPA", "IMESO", "ABCP",
+  // Nacionais
   "CEBRASPE", "CESPE", "FGV", "FCC", "VUNESP", "IBFC", "IDECAN", "AOCP",
   "FUNDATEC", "FEPESE", "IADES", "QUADRIX", "NUCEPE", "CONSULPLAN",
-  "OBJETIVA", "IBAM", "SELECON", "AVANCASP", "FAFIPE", "FADESP",
+  // Regionais (OBJETIVA removida — "objetiva" aparece em "prova objetiva")
+  "OBJETIVA CONCURSOS", "IBAM", "SELECON", "AVANCASP", "FAFIPE", "FADESP",
   "FUNRIO", "COGNUS", "EXATUS", "LEGALLE", "MOVENS", "FUMARC",
   "COVEST", "COMPERVE", "FUNCAB", "IDIB", "IDCAN", "NOVA CONCURSOS",
   "INTELECTUS", "COTEC", "INSTITUTO MAIS", "RBO", "AMEOSC",
