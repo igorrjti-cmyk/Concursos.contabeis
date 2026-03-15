@@ -46,7 +46,7 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
                 const [dr, mr, yr] = c.dataResultado.split("/").map(Number);
                 const dRes = new Date(yr, mr - 1, dr);
                 if (dRes >= hoje) {
-                  status = "Aguardando Prova"; // aguardando resultado
+                  status = "Aguardando Prova";
                 } else {
                   status = "Encerrado";
                 }
@@ -54,6 +54,12 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
                 status = "Encerrado";
               }
             }
+          }
+        } else {
+          // Sem data de prova: descarta se inscrição encerrou há mais de 180 dias
+          // Evita concursos antigos sem cronograma aparecerem como "Previsto"
+          if (diasRestantes < -180) {
+            status = "Encerrado";
           }
         }
       }
@@ -63,7 +69,7 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
     .filter(c => c.status !== "Encerrado");
 }
 
-const CACHE_KEY = "concursos:v2";
+const CACHE_KEY = "concursos:v5"; // v4 = nova chave, invalida cache antigo
 const CACHE_TTL_HORAS = 6;
 
 interface CacheRow {

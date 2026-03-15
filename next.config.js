@@ -1,14 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Módulos nativos — carregados pelo Node.js diretamente, não pelo webpack
   serverExternalPackages: [
     "pdfjs-dist",
     "canvas",
     "sharp",
   ],
 
-  webpack(config) {
-    // Ignora binários .node que o webpack não processa
+  webpack(config, { isServer }) {
+    if (!isServer) {
+      // Não inclui pdfjs-dist no bundle do cliente
+      config.resolve.alias["pdfjs-dist"] = false;
+    }
     config.module.rules.push({
       test: /\.node$/,
       use: "ignore-loader",
