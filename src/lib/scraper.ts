@@ -626,8 +626,8 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
   }
 
   // Detecta se o texto indica processo seletivo (não concurso público)
-  const textoNormPS = textoLow.replace(/
-/g, " ");
+  const textoNormPS = textoLow.split("
+").join(" ");
   if (
     textoNormPS.includes("processo seletivo simplificado") ||
     textoNormPS.includes("seleção simplificada") ||
