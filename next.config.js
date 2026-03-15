@@ -2,7 +2,7 @@
 const nextConfig = {
   // Módulos nativos — carregados pelo Node.js diretamente, não pelo webpack
   serverExternalPackages: [
-    "pdf-parse",
+    "pdfjs-dist",
     "canvas",
     "sharp",
   ],
