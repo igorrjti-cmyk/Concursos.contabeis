@@ -7,6 +7,62 @@ import { scrapeAllConcursos } from "@/lib/scraper";
 import { getSupabase } from "@/lib/supabase";
 import type { Concurso } from "@/lib/scraper";
 
+// Reclassifica status baseado na data atual — corrige cache desatualizado
+function reclassificarCache(concursos: Concurso[]): Concurso[] {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  return concursos
+    .map(c => {
+      // Recalcula diasRestantes sempre (data pode ter mudado desde o cache)
+      let diasRestantes = c.diasRestantes;
+      if (c.inscricaoAte && c.inscricaoAte !== "Ver edital" && c.inscricaoAte !== "-") {
+        const partes = c.inscricaoAte.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (partes) {
+          const ate = new Date(+partes[3], +partes[2] - 1, +partes[1]);
+          diasRestantes = Math.ceil((ate.getTime() - hoje.getTime()) / 86_400_000);
+        }
+      }
+
+      // Reclassifica status
+      let status = c.status;
+
+      // Inscrições abertas → verifica se prazo passou
+      if (status === "Inscricoes Abertas" && diasRestantes < 0) {
+        status = "Previsto";
+      }
+
+      // Previsto/Aguardando Prova → verifica datas do edital
+      if (status === "Previsto" || status === "Aguardando Prova") {
+        if (c.dataProva && c.dataProva !== "-") {
+          const [d, m, y] = c.dataProva.split("/").map(Number);
+          if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+            const dp = new Date(y, m - 1, d);
+            if (dp >= hoje) {
+              status = "Aguardando Prova";
+            } else {
+              // Prova passou — verifica resultado
+              if (c.dataResultado && c.dataResultado !== "-") {
+                const [dr, mr, yr] = c.dataResultado.split("/").map(Number);
+                const dRes = new Date(yr, mr - 1, dr);
+                if (dRes >= hoje) {
+                  status = "Aguardando Prova"; // aguardando resultado
+                } else {
+                  status = "Encerrado";
+                }
+              } else {
+                status = "Encerrado";
+              }
+            }
+          }
+        }
+      }
+
+      return { ...c, status, diasRestantes };
+    })
+    .filter(c => c.status !== "Encerrado");
+}
+
 const CACHE_KEY = "concursos:v2";
 const CACHE_TTL_HORAS = 6;
 
@@ -35,12 +91,13 @@ export async function GET(req: Request) {
       if (!error && data) {
         const idadeHoras = (Date.now() - new Date(data.atualizado).getTime()) / 3_600_000;
         if (idadeHoras < CACHE_TTL_HORAS) {
+          const concursosReclassificados = reclassificarCache(data.dados.concursos);
           return NextResponse.json({
             ok: true,
-            total: data.dados.concursos.length,
+            total: concursosReclassificados.length,
             atualizadoEm: data.dados.atualizadoEm,
             fromCache: true,
-            concursos: data.dados.concursos,
+            concursos: concursosReclassificados,
           });
         }
       }
