@@ -303,7 +303,7 @@ export async function GET(req: Request) {
       .png({ quality: 95 })
       .toBuffer();
 
-    return new NextResponse(png, {
+    return new NextResponse(new Uint8Array(png), {
       headers: {
         "Content-Type":  "image/png",
         "Cache-Control": "public, max-age=3600",
