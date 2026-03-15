@@ -41,7 +41,28 @@ function Btn({ color, onClick, disabled, children }: { color:string; onClick:(e:
   );
 }
 
-// ── Main ─────────────────────────────────────────────────────────────────────
+// Modal de confirmação sem dependências externas (evita warning do Radix/shadcn)
+function ConfirmModal({ mensagem, onConfirm, onCancel }: {
+  mensagem: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:999, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div role="alertdialog" aria-modal="true" aria-label="Confirmação" style={{ background:"#0C1E3E", border:"1px solid rgba(255,75,75,.3)", borderRadius:16, padding:"28px 32px", maxWidth:400, width:"90%", display:"flex", flexDirection:"column", gap:20 }}>
+        <div style={{ color:"#fff", fontSize:14, lineHeight:1.6 }}>{mensagem}</div>
+        <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+          <button onClick={onCancel} style={{ background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", color:"rgba(255,255,255,.6)", borderRadius:9, padding:"8px 18px", cursor:"pointer", fontSize:12, fontWeight:600 }}>
+            Cancelar
+          </button>
+          <button onClick={onConfirm} style={{ background:"rgba(255,75,75,.15)", border:"1px solid rgba(255,75,75,.3)", color:"#FF4B4B", borderRadius:9, padding:"8px 18px", cursor:"pointer", fontSize:12, fontWeight:700 }}>
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 export default function Home() {
   const [concursos, setConcursos]   = useState<Concurso[]>([]);
   const [historico, setHistorico]   = useState<PostHistorico[]>([]);
@@ -58,10 +79,62 @@ export default function Home() {
   const [atualizadoEm, setAtualizadoEm] = useState("");
   const [fromCache, setFromCache]   = useState(false);
 
-  const [clearing, setClearing] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{ mensagem: string; onConfirm: () => void } | null>(null);
+
+  const confirmar = (mensagem: string): Promise<boolean> =>
+    new Promise(resolve => {
+      setConfirmModal({
+        mensagem,
+        onConfirm: () => { setConfirmModal(null); resolve(true); },
+      });
+    });
+
+  const cancelarModal = () => { setConfirmModal(null); };
+  const [debugging, setDebugging] = useState(false);
+
+  const runDebug = async () => {
+    setDebugging(true);
+    console.clear();
+    console.group("🔍 DEBUG — Concursos Contábeis");
+    console.log("Iniciando diagnóstico das URLs de scraping...");
+    try {
+      const urls = ["/vagas/contador","/vagas/contabilidade","/vagas/tecnico-em-contabilidade","/vagas/auditor-fiscal"];
+      for (const u of urls) {
+        const res  = await fetch(`/api/debug?url=${encodeURIComponent(u)}`);
+        const data = await res.json();
+        console.group(`📄 ${u}`);
+        console.log("✅ Fetch OK:", data.fetch?.ok, "| Status HTTP:", data.fetch?.status, data.fetch?.error ? `| Erro: ${data.fetch.error}` : "");
+        console.log("🔗 Links encontrados:", data.links_total, "| Válidos:", data.links_validos);
+        console.log("📝 Total linhas no texto:", data.total_linhas, "| Seletor de conteúdo achou:", data.seletor_conteudo_encontrado);
+        (data.debug_primeiros_3_concursos ?? []).forEach((b: Record<string,unknown>, i: number) => {
+          console.group(`  Concurso #${i+1}: ${b.orgao}`);
+          console.log("  title:", b.title);
+          console.log("  UF:", b.uf_extraido, "| Idx no texto:", b.idx_orgao_no_texto);
+          console.log("  Cargo do title:", b.cargo_do_title);
+          console.log("  Vagas:", b.vagas_match);
+          console.log("  Data período:", b.data_periodo, "| Data única:", b.data_unica);
+          console.log("  Bloco de linhas:", b.bloco_linhas);
+          console.groupEnd();
+        });
+        if (data.linhas_ao_redor_primeiro_concurso) {
+          console.log("📋 Linhas ao redor do 1º concurso:");
+          (data.linhas_ao_redor_primeiro_concurso.linhas as string[]).forEach((l:string) => console.log("  ",l));
+        }
+        console.log("🔗 Amostra de links:");
+        console.table(data.links_amostra ?? []);
+        console.groupEnd();
+      }
+      console.log("✅ Debug concluído! Expanda os grupos acima para detalhar.");
+    } catch (e) {
+      console.error("❌ Erro no debug:", e);
+    } finally {
+      console.groupEnd();
+      setDebugging(false);
+    }
+  };
 
   const clearCache = async () => {
-    if (!confirm("Limpar o cache do Supabase? O próximo acesso vai fazer um novo scraping.")) return;
+    if (!await confirmar("Limpar o cache do Supabase? O próximo acesso vai fazer um novo scraping.")) return;
     setClearing(true);
     try {
       const res = await fetch("/api/concursos", { method: "DELETE" });
@@ -84,7 +157,69 @@ export default function Home() {
         setConcursos(data.concursos);
         setFromCache(data.fromCache ?? false);
         setAtualizadoEm(new Date(data.atualizadoEm).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" }));
+
+        // ── LOGS AUTOMÁTICOS NO CONSOLE ─────────────────────────────────────
+        const c: import("@/lib/scraper").Concurso[] = data.concursos;
+        console.group(`%c📊 Concursos Contábeis — ${data.fromCache ? "🗄️ CACHE" : "🔄 SCRAPING AO VIVO"}`, "color:#00C896;font-weight:bold;font-size:13px");
+        console.log(`%cTotal: ${c.length} | Atualizado: ${new Date(data.atualizadoEm).toLocaleString("pt-BR")}`, "color:#aaa");
+
+        // Contagem por status
+        const porStatus = c.reduce((acc, x) => { acc[x.status] = (acc[x.status]||0)+1; return acc; }, {} as Record<string,number>);
+        console.log("%cPor status:", "font-weight:bold", porStatus);
+
+        // Tabela resumida dos primeiros 20
+        console.group(`%c📋 Primeiros 20 concursos`, "color:#60A5FA;font-weight:bold");
+        console.table(c.slice(0,20).map(x => ({
+          cargo:       x.cargo,
+          orgao:       x.orgao,
+          estado:      x.estado,
+          status:      x.status,
+          inscricao:   x.inscricao,
+          dias:        x.diasRestantes,
+          vagas:       x.vagas,
+          salario:     x.salario,
+          banca:       x.banca,
+          dataProva:   x.dataProva,
+          resultado:   x.dataResultado,
+        })));
+        console.groupEnd();
+
+        // Concursos com cargo problemático (ainda "Vários Cargos" ou muito longo)
+        const problemáticos = c.filter(x =>
+          x.cargo === "Vários Cargos" ||
+          x.cargo === "—" ||
+          x.cargo.length > 60 ||
+          /^(diversos|fundamental|médio|superior|técnico)/i.test(x.cargo)
+        );
+        if (problemáticos.length > 0) {
+          console.group(`%c⚠️ Cargos problemáticos (${problemáticos.length})`, "color:#FFB800;font-weight:bold");
+          console.table(problemáticos.map(x => ({ cargo: x.cargo, orgao: x.orgao, title_hint: x.linkNoticia.split("/").pop() })));
+          console.groupEnd();
+        }
+
+        // Em Andamento sem data de resultado (suspeitos de serem "Previsto" errado)
+        const andamentoSemData = c.filter(x => x.status === "Em Andamento" && x.dataResultado === "—");
+        if (andamentoSemData.length > 0) {
+          console.group(`%c🔵 Em Andamento sem data de resultado (${andamentoSemData.length}) — podem ser classificados errado`, "color:#60A5FA;font-weight:bold");
+          console.table(andamentoSemData.slice(0,10).map(x => ({ orgao: x.orgao, inscricao: x.inscricao, inscricaoAte: x.inscricaoAte, dias: x.diasRestantes })));
+          console.groupEnd();
+        }
+
+        // Urgentes
+        const urgentes = c.filter(x => x.diasRestantes >= 0 && x.diasRestantes <= 7);
+        if (urgentes.length > 0) {
+          console.group(`%c⚡ Urgentes — inscrições encerrando em ≤7 dias (${urgentes.length})`, "color:#FF4B4B;font-weight:bold");
+          console.table(urgentes.map(x => ({ cargo: x.cargo, orgao: x.orgao, inscricaoAte: x.inscricaoAte, dias: x.diasRestantes })));
+          console.groupEnd();
+        }
+
+        console.groupEnd();
+        // ────────────────────────────────────────────────────────────────────
+      } else {
+        console.error("❌ API retornou erro:", data.error);
       }
+    } catch(e) {
+      console.error("❌ Erro ao carregar concursos:", e);
     } finally { setLoading(false); setRefreshing(false); }
   }, []);
 
@@ -166,6 +301,7 @@ export default function Home() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight:"100vh", background:"#080F1E", fontFamily:"'Sora',sans-serif", color:"#fff" }}>
+      {confirmModal && <ConfirmModal mensagem={confirmModal.mensagem} onConfirm={confirmModal.onConfirm} onCancel={cancelarModal} />}
       <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
       <style>{`
         @keyframes spin{to{transform:rotate(360deg)}}
@@ -195,7 +331,10 @@ export default function Home() {
           </div>
         </div>
         <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-          <button onClick={clearCache} disabled={clearing} title="Limpar cache do Supabase" style={{ background:"rgba(255,75,75,.1)", border:"1px solid rgba(255,75,75,.25)", color:"#FF4B4B", borderRadius:10, padding:"9px 14px", fontSize:12, fontWeight:700, cursor:clearing?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:6, opacity:clearing?.6:1 }}>
+          <button onClick={runDebug} disabled={debugging} title="Abre logs no console F12" style={{ background:"rgba(167,139,250,.1)", border:"1px solid rgba(167,139,250,.25)", color:"#A78BFA", borderRadius:10, padding:"9px 14px", fontSize:12, fontWeight:700, cursor:debugging?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:6, opacity:debugging?.6:1 }}>
+            <span style={{ display:"inline-block", animation:debugging?"spin .8s linear infinite":"none" }}>🔍</span>
+            {debugging ? "Analisando…" : "Debug F12"}
+          </button> title="Limpar cache do Supabase" style={{ background:"rgba(255,75,75,.1)", border:"1px solid rgba(255,75,75,.25)", color:"#FF4B4B", borderRadius:10, padding:"9px 14px", fontSize:12, fontWeight:700, cursor:clearing?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:6, opacity:clearing?.6:1 }}>
             <span style={{ display:"inline-block", animation:clearing?"spin .8s linear infinite":"none" }}>🗑️</span>
             {clearing ? "Limpando…" : "Limpar cache"}
           </button>
