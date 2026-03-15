@@ -479,27 +479,21 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
 
   // Estratégia 2: padrões de frases que indicam a banca organizadora
   if (out.banca === "-") {
-    const padroesBanca = [
-      /organiza(?:do|ção)\s+(?:pela?|pelo?\s+instituto)\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõç\s\-]{2,40}?)(?:\s*[,.
-]|$)/i,
-      /banca\s+organiz\w+\s*[:–-]\s*([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõç\s\-]{2,40}?)(?:\s*[,.
-]|$)/i,
-      /(?:realiz\w+|execut\w+)\s+(?:pela?|pelo?)\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõç\s\-]{2,40}?)(?:\s*[,.
-]|$)/i,
-      /empresa\s+organiz\w+\s*[:–-]\s*([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõç\s\-]{2,40}?)(?:\s*[,.
-]|$)/i,
+    const padroesBanca: RegExp[] = [
+      new RegExp("organiza(?:do|cao)\\s+(?:pela?|pelo?\\s+instituto)\\s+([A-Za-z\\u00C0-\\u00FF][A-Za-z\\u00C0-\\u00FF\\s\\-]{2,40}?)(?:\\s*[,.\\n]|$)", "i"),
+      new RegExp("banca\\s+organiz\\w+\\s*[:\\-]\\s*([A-Za-z\\u00C0-\\u00FF][A-Za-z\\u00C0-\\u00FF\\s\\-]{2,40}?)(?:\\s*[,.\\n]|$)", "i"),
+      new RegExp("(?:realiz\\w+|execut\\w+)\\s+(?:pela?|pelo?)\\s+([A-Za-z\\u00C0-\\u00FF][A-Za-z\\u00C0-\\u00FF\\s\\-]{2,40}?)(?:\\s*[,.\\n]|$)", "i"),
+      new RegExp("empresa\\s+organiz\\w+\\s*[:\\-]\\s*([A-Za-z\\u00C0-\\u00FF][A-Za-z\\u00C0-\\u00FF\\s\\-]{2,40}?)(?:\\s*[,.\\n]|$)", "i"),
     ];
     for (const re of padroesBanca) {
       const m = texto.match(re);
       if (m?.[1]) {
         const candidato = m[1].trim().replace(/\s+/g, " ");
-        // Verifica se o candidato corresponde a alguma banca conhecida
         const bancaMatch = BANCAS_CONHECIDAS.find(b =>
           candidato.toUpperCase().includes(b.toUpperCase()) ||
           b.toUpperCase().includes(candidato.toUpperCase().slice(0, 6))
         );
         if (bancaMatch) { out.banca = bancaMatch; break; }
-        // Guarda o texto raw se tiver tamanho razoável (pode ser banca nova)
         if (candidato.length >= 3 && candidato.length <= 40) {
           out.banca = candidato.toUpperCase();
           break;
