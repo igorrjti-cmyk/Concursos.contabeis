@@ -184,16 +184,16 @@ export default function Home() {
         })));
         console.groupEnd();
 
-        // Concursos com cargo problemático (ainda "Vários Cargos" ou muito longo)
-        const problemáticos = c.filter(x =>
+        // Concursos com cargo problemático
+        const problematicos = c.filter(x =>
           x.cargo === "Vários Cargos" ||
           x.cargo === "—" ||
           x.cargo.length > 60 ||
           /^(diversos|fundamental|médio|superior|técnico)/i.test(x.cargo)
         );
-        if (problemáticos.length > 0) {
-          console.group(`%c⚠️ Cargos problemáticos (${problemáticos.length})`, "color:#FFB800;font-weight:bold");
-          console.table(problemáticos.map(x => ({ cargo: x.cargo, orgao: x.orgao, title_hint: x.linkNoticia.split("/").pop() })));
+        if (problematicos.length > 0) {
+          console.group(`%c⚠️ Cargos problematicos (${problematicos.length})`, "color:#FFB800;font-weight:bold");
+          console.table(problematicos.map(x => ({ cargo: x.cargo, orgao: x.orgao, title_hint: x.linkNoticia.split("/").pop() })));
           console.groupEnd();
         }
 
