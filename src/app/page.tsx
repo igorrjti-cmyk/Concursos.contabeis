@@ -432,7 +432,7 @@ export default function Home() {
                     <div style={{ display:"flex", gap:6, flexWrap:"wrap" }} className="list-actions">
                       <Tag color="#00C896">{c.salario}</Tag>
                       <Tag color="#A78BFA">{c.vagas}</Tag>
-                      <Tag color={STATUS_DOT[c.status]??"#888"}>{c.status}</Tag>
+                      <Tag color={STATUS_DOT[c.status]??"#888"}>{statusLabel(c.status)}</Tag>
                     </div>
                     <div style={{ display:"flex", gap:6, flexShrink:0, flexWrap:"wrap" }} className="list-actions">
                       <Btn color="#00C896" onClick={e => { e.stopPropagation(); copyLegenda(c); }}>
