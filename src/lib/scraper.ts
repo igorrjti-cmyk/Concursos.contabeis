@@ -341,52 +341,6 @@ function detectStatus(inscricaoAte: string): Concurso["status"] {
 }
 
 /**
- * Reclassifica um concurso "Previsto" para "Aguardando Prova" se:
- *   - Tem dataProva válida E a prova ainda não ocorreu
- * Isso diferencia concursos sem data (Previsto) dos que têm cronograma (Aguardando Prova)
- */
-function reclassificarStatus(
-  status: Concurso["status"],
-  dataProva: string,
-  dataResultado: string
-): Concurso["status"] {
-  if (status !== "Previsto") return status;
-
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-
-  // Se tem data de prova futura → Aguardando Prova
-  if (dataProva && dataProva !== "-") {
-    const [d, m, y] = dataProva.split("/").map(Number);
-    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
-      const dp = new Date(y, m - 1, d);
-      if (dp >= hoje) return "Aguardando Prova";
-      // Prova já passou — verifica resultado
-      if (dataResultado && dataResultado !== "-") {
-        const [dr, mr, yr] = dataResultado.split("/").map(Number);
-        const dRes = new Date(yr, mr - 1, dr);
-        if (dRes >= hoje) return "Aguardando Prova"; // resultado ainda não saiu
-      }
-      // Prova passou e resultado também → Encerrado (descartado na filtragem)
-      return "Encerrado";
-    }
-  }
-
-  // Tem data de resultado futura mas sem prova → Aguardando Prova
-  if (dataResultado && dataResultado !== "-") {
-    const [dr, mr, yr] = dataResultado.split("/").map(Number);
-    if (!isNaN(dr) && !isNaN(mr) && !isNaN(yr)) {
-      const dRes = new Date(yr, mr - 1, dr);
-      if (dRes >= hoje) return "Aguardando Prova";
-    }
-  }
-
-  return "Previsto";
-}
-
-// ─── Reclassificação de status pós-scraping ──────────────────────────────────
-
-/**
  * Reclassifica "Previsto" para "Aguardando Prova" quando o edital tem
  * data de prova futura. Se prova e resultado já passaram → "Encerrado".
  */
