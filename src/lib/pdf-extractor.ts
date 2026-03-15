@@ -185,10 +185,8 @@ function extrairDataProva(textoNorm: string): string {
     // "serão aplicadas na cidade de X, no dia 08/02/2026"  ← padrão Câmara de Londrina
     /aplicadas?\s+na\s+cidade\s+de\s+[^,]{1,40},\s+no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
     // "no dia 08/02/2026" próximo de "prova"
-    /no\s+dia\s+(\d{2}\/\d{2}\/\d{4})[^
-]{0,60}prova/i,
-    /prova[^
-]{0,60}no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
+    /no\s+dia\s+(\d{2}\/\d{2}\/\d{4})[\s\S]{0,60}prova/i,
+    /prova[\s\S]{0,60}no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
     // "aplicadas em 08/02/2026"
     /aplicadas?\s+(?:na\s+data\s+de\s+)?(\d{2}\/\d{2}\/\d{4})/i,
     // "data provável da prova: 08/02/2026"
@@ -196,10 +194,8 @@ function extrairDataProva(textoNorm: string): string {
     // Cronograma: "Provas ............. 08/02/2026"
     /provas?[.\s\-]{2,}(\d{2}\/\d{2}\/\d{4})/i,
     // Genérico: data perto da palavra prova
-    /(\d{2}\/\d{2}\/\d{4})[^
-]{0,40}prova/i,
-    /prova[^
-]{0,40}(\d{2}\/\d{2}\/\d{4})/i,
+    /(\d{2}\/\d{2}\/\d{4})[^]{0,40}prova/i,
+    /prova[^]{0,40}(\d{2}\/\d{2}\/\d{4})/i,
   ];
   for (const re of padroes) {
     const m = textoNorm.match(re);
@@ -218,8 +214,7 @@ function extrairDataResultado(textoNorm: string): string {
     /homologa[çc][aã]o\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /resultado\s+final\s+[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /(\d{2}\/\d{2}\/\d{4})[^\n]{0,40}resultado/i,
-    /resultado[^\n]{0,40}(\d{2}\/\d{2}\/\d{4})/i,
-  ];
+    /resultado[^\n]{0,40}(\d{2}\/\d{2}\/\d{4})/i,  ];
   for (const re of padroes) {
     const m = textoNorm.match(re);
     if (m?.[1] && m[1] !== dataProva) return m[1];
@@ -238,8 +233,7 @@ function extrairCargos(texto: string): string[] {
     const padroes = [
       /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d\n]{3,60}?)\s+\d+\s+(?:vaga|CR)/i,
       /^cargo\s*[:\-]\s*(.{3,60})/i,
-      /^(?:\d+|[IVX]+)[\.\-\s]+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d\n]{3,60})/i,
-    ];
+      /^(?:\d+|[IVX]+)[\.\-\s]+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d\n]{3,60})/i,    ];
 
     let encontrou = false;
     for (const re of padroes) {
