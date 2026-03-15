@@ -1,15 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: [
-    "pdfjs-dist",
+    "unpdf",
     "canvas",
     "sharp",
   ],
 
   webpack(config, { isServer }) {
     if (!isServer) {
-      // Não inclui pdfjs-dist no bundle do cliente
-      config.resolve.alias["pdfjs-dist"] = false;
+      config.resolve.alias["unpdf"] = false;
     }
     config.module.rules.push({
       test: /\.node$/,
