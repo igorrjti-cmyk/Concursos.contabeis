@@ -1,5 +1,5 @@
 // src/app/api/debug/route.ts
-// Endpoint de diagnóstico — scrapa uma URL e retorna os dados brutos
+// Endpoint de diagnostico - scrapa uma URL e retorna os dados brutos
 // para inspecionar no console do browser (F12)
 
 import { NextResponse } from "next/server";
@@ -50,7 +50,7 @@ export async function GET(req: Request) {
   const cheerio = await import("cheerio");
   const $ = cheerio.load(fetchResult.html);
 
-  // 3. Coleta links de notícias
+  // 3. Coleta links de noticias
   const todosLinks: { href: string; texto: string; title: string; slugLen: number; valido: boolean }[] = [];
   $("a[href*='/noticias/']").each((_, el) => {
     const href  = $(el).attr("href") || "";
@@ -64,9 +64,9 @@ export async function GET(req: Request) {
 
   log.links_total = todosLinks.length;
   log.links_validos = todosLinks.filter(l => l.valido).length;
-  log.links_amostra = todosLinks.slice(0, 20); // primeiros 20 para análise
+  log.links_amostra = todosLinks.slice(0, 20); // primeiros 20 para analise
 
-  // 4. Extrai texto da página em linhas
+  // 4. Extrai texto da pagina em linhas
   const $conteudo = $("main, #content, .content, article, #main").first();
   const textoCompleto = ($conteudo.length ? $conteudo : $("body"))
     .text()
@@ -79,13 +79,13 @@ export async function GET(req: Request) {
   log.total_linhas = linhas.length;
   log.seletor_conteudo_encontrado = $conteudo.length > 0;
 
-  // 5. Para os primeiros 3 links válidos, mostra o bloco extraído
+  // 5. Para os primeiros 3 links validos, mostra o bloco extraido
   const linksValidos = todosLinks.filter(l => l.valido).slice(0, 3);
   const blocos: Record<string, unknown>[] = [];
 
   for (const link of linksValidos) {
     const orgao  = link.texto;
-    const ufDoTitle = link.title.match(/\s+-\s+([A-Z]{2})\s+/)?.[1] ?? "não encontrado";
+    const ufDoTitle = link.title.match(/\s+-\s+([A-Z]{2})\s+/)?.[1] ?? "nao encontrado";
     const idxOrgao  = linhas.findIndex(l => l === orgao);
     const bloco     = idxOrgao >= 0 ? linhas.slice(idxOrgao, idxOrgao + 8) : [];
     const blocoTexto = bloco.join(" ");
@@ -98,7 +98,7 @@ export async function GET(req: Request) {
     const dataUnica    = blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
 
     // Testa regex de vagas
-    const vagasMatch = blocoTexto.match(/(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+até\s+R\$\s*([\d.,]+)/i);
+    const vagasMatch = blocoTexto.match(/(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+ate\s+R\$\s*([\d.,]+)/i);
 
     blocos.push({
       orgao,
@@ -106,16 +106,16 @@ export async function GET(req: Request) {
       uf_extraido: ufDoTitle,
       idx_orgao_no_texto: idxOrgao,
       bloco_linhas: bloco,
-      cargo_do_title: cargoMatch ? cargoMatch[1].trim() : "NÃO ENCONTRADO — regex falhou",
-      vagas_match: vagasMatch ? vagasMatch[0] : "NÃO ENCONTRADO",
-      data_periodo: periodoMatch ? `${periodoMatch[1]} a ${periodoMatch[2]}` : "NÃO ENCONTRADO",
-      data_unica: dataUnica ? dataUnica[1] : "NÃO ENCONTRADO",
+      cargo_do_title: cargoMatch ? cargoMatch[1].trim() : "NAO ENCONTRADO - regex falhou",
+      vagas_match: vagasMatch ? vagasMatch[0] : "NAO ENCONTRADO",
+      data_periodo: periodoMatch ? `${periodoMatch[1]} a ${periodoMatch[2]}` : "NAO ENCONTRADO",
+      data_unica: dataUnica ? dataUnica[1] : "NAO ENCONTRADO",
     });
   }
 
   log.debug_primeiros_3_concursos = blocos;
 
-  // 6. Linhas ao redor do primeiro concurso para diagnóstico visual
+  // 6. Linhas ao redor do primeiro concurso para diagnostico visual
   const primeiroOrgao = linksValidos[0]?.texto;
   const idxPrimeiro   = primeiroOrgao ? linhas.findIndex(l => l === primeiroOrgao) : -1;
   if (idxPrimeiro >= 0) {

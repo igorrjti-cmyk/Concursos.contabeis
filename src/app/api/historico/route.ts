@@ -1,5 +1,5 @@
 // src/app/api/historico/route.ts
-// CRUD do histórico de posts usando Supabase (tabela historico_posts)
+// CRUD do historico de posts usando Supabase (tabela historico_posts)
 
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
@@ -13,7 +13,7 @@ export interface PostHistorico {
   posted_at: string; // ISO
 }
 
-// GET — lista todos os posts, mais recentes primeiro
+// GET - lista todos os posts, mais recentes primeiro
 export async function GET() {
   const sb = getSupabase();
   if (!sb) return NextResponse.json({ ok: true, historico: [] });
@@ -25,21 +25,21 @@ export async function GET() {
     .limit(200);
 
   if (error) {
-    console.error("Erro ao buscar histórico:", error.message);
+    console.error("Erro ao buscar historico:", error.message);
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, historico: data ?? [] });
 }
 
-// POST — registra um novo post
+// POST - registra um novo post
 export async function POST(req: Request) {
   const sb = getSupabase();
-  if (!sb) return NextResponse.json({ ok: false, error: "Supabase não configurado" }, { status: 503 });
+  if (!sb) return NextResponse.json({ ok: false, error: "Supabase nao configurado" }, { status: 503 });
 
   const body = await req.json() as { id: string; cargo: string; orgao: string; estado: string };
 
-  // Verifica se já foi postado hoje
+  // Verifica se ja foi postado hoje
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (jaExiste) {
-    return NextResponse.json({ ok: false, error: "Já postado hoje" }, { status: 409 });
+    return NextResponse.json({ ok: false, error: "Ja postado hoje" }, { status: 409 });
   }
 
   const { error } = await sb.from("historico_posts").insert({
@@ -62,17 +62,17 @@ export async function POST(req: Request) {
   });
 
   if (error) {
-    console.error("Erro ao inserir histórico:", error.message);
+    console.error("Erro ao inserir historico:", error.message);
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
 }
 
-// DELETE — remove um registro pelo concurso_id
+// DELETE - remove um registro pelo concurso_id
 export async function DELETE(req: Request) {
   const sb = getSupabase();
-  if (!sb) return NextResponse.json({ ok: false, error: "Supabase não configurado" }, { status: 503 });
+  if (!sb) return NextResponse.json({ ok: false, error: "Supabase nao configurado" }, { status: 503 });
 
   const { id } = await req.json() as { id: string };
 
@@ -82,7 +82,7 @@ export async function DELETE(req: Request) {
     .eq("concurso_id", id);
 
   if (error) {
-    console.error("Erro ao deletar histórico:", error.message);
+    console.error("Erro ao deletar historico:", error.message);
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 

@@ -1,6 +1,6 @@
 // src/app/api/concursos/route.ts
-// Cache via Supabase (tabela cache_concursos) — TTL 6h
-// Fallback para scraping ao vivo se Supabase não estiver configurado
+// Cache via Supabase (tabela cache_concursos) - TTL 6h
+// Fallback para scraping ao vivo se Supabase nao estiver configurado
 
 import { NextResponse } from "next/server";
 import { scrapeAllConcursos } from "@/lib/scraper";
@@ -16,7 +16,7 @@ interface CacheRow {
   atualizado: string;
 }
 
-// GET — retorna concursos (do cache ou scraping ao vivo)
+// GET - retorna concursos (do cache ou scraping ao vivo)
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const forceRefresh = url.searchParams.get("refresh") === "1";
@@ -75,13 +75,13 @@ export async function GET(req: Request) {
   }
 }
 
-// DELETE — limpa o cache do Supabase
+// DELETE - limpa o cache do Supabase
 export async function DELETE() {
   try {
     const sb = getSupabase();
     if (!sb) {
       return NextResponse.json(
-        { ok: false, error: "Supabase não configurado" },
+        { ok: false, error: "Supabase nao configurado" },
         { status: 503 }
       );
     }

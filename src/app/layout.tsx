@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Concursos Contábeis | @concursos.contabeis",
+  title: "Concursos Contabeis | @concursos.contabeis",
   description:
-    "Painel de concursos públicos para Ciências Contábeis: contador, técnico em contabilidade, auditor fiscal e mais.",
+    "Painel de concursos publicos para Ciencias Contabeis: contador, tecnico em contabilidade, auditor fiscal e mais.",
   openGraph: {
-    title: "Concursos Contábeis",
-    description: "Todos os concursos para Ciências Contábeis em um só lugar.",
-    siteName: "Concursos Contábeis",
+    title: "Concursos Contabeis",
+    description: "Todos os concursos para Ciencias Contabeis em um so lugar.",
+    siteName: "Concursos Contabeis",
   },
 };
 
