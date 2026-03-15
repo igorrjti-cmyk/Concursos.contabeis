@@ -122,6 +122,62 @@ const AREAS_EXCLUIDAS_TITLE = [
   "arquiteto", "urbanista",
 ];
 
+// Cargos não-contábeis que aparecem misturados em editais de "Vários Cargos"
+// Quando o cargo extraído for um desses, descartamos — só ficam os contábeis
+const CARGOS_NAO_CONTABEIS = [
+  // jurídico
+  "advogado", "procurador", "analista de procuradoria", "assistente jurídico",
+  "assistente juridico", "assessor jurídico", "assessor juridico",
+  "defensor", "promotor",
+  // administrativo genérico de nível médio
+  "agente administrativo", "agente legislativo", "assistente legislativo",
+  "auxiliar administrativo", "auxiliar legislativo", "assistente de serviços",
+  "assistente de servicos", "auxiliar de serviços", "auxiliar de servicos",
+  "recepcionista", "telefonista", "porteiro", "zelador", "motorista",
+  "operador de máquinas", "operador de maquinas", "servente",
+  "auxiliar de limpeza", "copeiro", "cozinheiro",
+  // saúde
+  "médico", "medico", "enfermeiro", "técnico de enfermagem", "tecnico de enfermagem",
+  "dentista", "farmacêutico", "farmaceutico", "nutricionista", "fisioterapeuta",
+  "psicólogo", "psicologo", "assistente social",
+  // educação
+  "professor", "pedagogo", "orientador educacional",
+  // TI
+  "analista de ti", "analista de sistemas", "técnico de informática",
+  "tecnico de informatica", "programador",
+  // engenharia
+  "engenheiro", "arquiteto", "topógrafo", "topografo",
+];
+
+/**
+ * Dado um cargo extraído (que pode conter múltiplos separados por "e", ",", "/"),
+ * retorna apenas as partes que são contábeis.
+ * Ex: "Contador e Agente Legislativo" → "Contador"
+ * Ex: "Analista de Procuradoria e Contador" → "Contador"
+ * Ex: "Contador" → "Contador"
+ */
+export function filtrarCargosContabeis(cargo: string): string {
+  // Separa por vírgula, " e ", " E ", "/"
+  const partes = cargo
+    .split(/,|\s+e\s+|\//)
+    .map(p => p.trim())
+    .filter(p => p.length > 1);
+
+  if (partes.length <= 1) return cargo; // cargo simples, não altera
+
+  const contabeis = partes.filter(p => {
+    const pLow = p.toLowerCase();
+    // Tem palavra-chave contábil?
+    const temContabil = CARGO_CONTABIL_KW.some(kw => pLow.includes(kw));
+    // É claramente não-contábil?
+    const ehNaoContabil = CARGOS_NAO_CONTABEIS.some(nc => pLow.includes(nc.toLowerCase()));
+    return temContabil && !ehNaoContabil;
+  });
+
+  if (contabeis.length === 0) return cargo; // não conseguiu filtrar, mantém original
+  return contabeis.join(" e ");
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function fetchComTimeout(url: string): Promise<string | null> {
@@ -568,9 +624,14 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       continue;
     }
 
-    // Se encontrou cargos contábeis específicos no edital, atualiza o cargo principal
-    let cargoDisplay = cargoFinal;
-    if (det.cargosContabeis.length > 0 && cargoFinal === "Vários Cargos") {
+    // Filtra só a parte contábil do cargo (ex: "Contador e Agente Legislativo" → "Contador")
+    let cargoDisplay = filtrarCargosContabeis(cargoFinal);
+
+    // Se ainda é "Vários Cargos" e o edital tem cargos contábeis específicos, usa eles
+    if (
+      (cargoDisplay === "Vários Cargos" || cargoDisplay === cargoFinal) &&
+      det.cargosContabeis.length > 0
+    ) {
       cargoDisplay = det.cargosContabeis.join(", ");
     }
 
