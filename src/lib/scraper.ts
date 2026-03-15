@@ -223,11 +223,12 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     // Title patterns: "...publica edital para Contador e Economista"
     //                 "...abre concurso para Auditor Fiscal"
     const cargoDoTitle = (() => {
-      const m = title.match(/\b(?:para|ao cargo de|vagas?\s+(?:de|para))\s+([^(]{3,55?})(?:\s+e\s+[A-Z][^,.(]{2,30}?)?(?:\s+em\s+|\s+com\s+|\s+no\s+|\s+na\s+|[,.(]|$)/i);
+      // Title: "Camara de Pirangucu - MG abre concurso para Auxiliar de Servicos Gerais, Tecnico Legislativo, Contador"
+      // We want to capture ALL cargos listed after "para"
+      const m = title.match(/\b(?:para|ao cargo de|vagas?\s+(?:de|para))\s+(.{3,80}?)(?:\s+em\s+|\s+com\s+|\s+no\s+|\s+na\s+|\s+sob\s+|$)/i);
       if (m) {
-        // Trim trailing commas, spaces, conjunctions
-        const c = m[1].trim().replace(/[,\s]+$/, "");
-        if (c.length >= 3 && c.length < 60 && !c.toLowerCase().includes("concurso") && !c.toLowerCase().includes("selecao")) return c;
+        const c = m[1].trim().replace(/\s+$/, "");
+        if (c.length >= 3 && c.length < 80 && !c.toLowerCase().includes("concurso") && !c.toLowerCase().includes("selecao")) return c;
       }
       return null;
     })();
@@ -299,14 +300,10 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
       inscricao    = inicio + " a " + periodoMatch[2];
       inscricaoAte = periodoMatch[2];
     } else if (dataUnicaMatch) {
-      // Single date without period — only use it if it's clearly a future inscription deadline
-      // (in the past = ambiguous, could be proof date; treat as Previsto to avoid false Em Andamento)
-      const dias = calcDiasRestantes(dataUnicaMatch[1]);
-      if (dias >= 0) {
-        inscricao    = dataUnicaMatch[1];
-        inscricaoAte = dataUnicaMatch[1];
-      }
-      // If date is past, leave as "-" / "Ver edital" → Previsto
+      // Single date — use it regardless of past/future
+      // Past = Em Andamento, Future = Inscricoes Abertas
+      inscricao    = dataUnicaMatch[1];
+      inscricaoAte = dataUnicaMatch[1];
     }
 
     // ── Filtro contabil ──────────────────────────────────────────────────────
