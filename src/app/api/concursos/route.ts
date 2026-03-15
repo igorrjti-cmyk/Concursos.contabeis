@@ -27,6 +27,14 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
       // Reclassifica status
       let status = c.status;
 
+      // Descarta imediatamente concursos muito antigos (ano < ano atual - 1)
+      const anoAtual = hoje.getFullYear();
+      const inscricaoStr = c.inscricao || c.inscricaoAte || "";
+      const anoEdital = inscricaoStr.match(/(\d{4})/g)?.map(Number).find(a => a > 2000);
+      if (anoEdital && anoEdital < anoAtual - 1) {
+        status = "Encerrado";
+      }
+
       // Inscrições abertas → verifica se prazo passou
       if (status === "Inscricoes Abertas" && diasRestantes < 0) {
         status = "Previsto";
@@ -69,7 +77,7 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
     .filter(c => c.status !== "Encerrado");
 }
 
-const CACHE_KEY = "concursos:v8"; // v4 = nova chave, invalida cache antigo
+const CACHE_KEY = "concursos:v10"; // v4 = nova chave, invalida cache antigo
 const CACHE_TTL_HORAS = 6;
 
 interface CacheRow {

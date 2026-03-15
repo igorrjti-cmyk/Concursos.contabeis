@@ -716,6 +716,21 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     if (!texto || texto.length < 4 || texto.length > 80) return;
     if (texto === title) return;
 
+    // ── Descarta notícias antigas ─────────────────────────────────────────────
+    // Notícias recentes do PCI (2024+) têm ID numérico no path >= 1.600.000
+    // Notícias antigas podem não ter ID (slug puro) ou ter ID baixo
+    const idMatch = href.match(/\/(\d{5,7})/);
+    if (idMatch) {
+      const idNoticia = parseInt(idMatch[1]);
+      if (idNoticia < 1_500_000) return; // notícia com ID antigo
+    } else {
+      // Sem ID numérico no href = formato antigo do PCI (pré-2018) = descarta
+      return;
+    }
+    // Fallback: ano explícito na URL
+    const hrefAnoMatch = href.match(/\/(20\d{2})\//);
+    if (hrefAnoMatch && parseInt(hrefAnoMatch[1]) < new Date().getFullYear() - 1) return;
+
     // ── Aceita apenas CONCURSO PÚBLICO — descarta processo seletivo ──────────
     const titleLow = title.toLowerCase();
     const hrefLow  = href.toLowerCase();
