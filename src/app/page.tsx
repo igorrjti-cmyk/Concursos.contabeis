@@ -7,9 +7,28 @@ import type { Concurso } from "@/lib/scraper";
 import type { PostHistorico } from "@/app/api/historico/route";
 
 type FilterStatus = "todos" | "Inscricoes Abertas" | "Previsto";
-type TabType = "lista" | "cards" | "historico";
+type TabType = "lista" | "cards" | "historico" | "favoritos" | "stats" | "calendario";
 type CardFormato = "feed" | "stories";
 type SortBy = "padrao" | "salario" | "vagas" | "prazo";
+
+interface Favorito {
+  id: number;
+  concurso_id: string;
+  cargo: string;
+  orgao: string;
+  estado: string;
+  nota: string | null;
+  criado_em: string;
+}
+
+interface StatsData {
+  totalGeral: number;
+  totalSemana: number;
+  totalMes: number;
+  semanasData: { semana: string; label: string; total: number }[];
+  topEstados:  { estado: string; total: number }[];
+  topCargos:   { cargo: string;  total: number }[];
+}
 
 const STATUS_DOT: Record<string, string> = {
   "Inscricoes Abertas": "#00C896",
@@ -150,6 +169,10 @@ export default function Home() {
   const [estadoFiltro, setEstadoFiltro] = useState("Todos");
   const [nivelFiltro, setNivelFiltro]   = useState("Todos");
   const [sortBy, setSortBy]             = useState<SortBy>("padrao");
+  const [salarioMin, setSalarioMin]     = useState(0);
+  const [favoritos, setFavoritos]       = useState<Favorito[]>([]);
+  const [stats, setStats]               = useState<StatsData | null>(null);
+  const [favoritando, setFavoritando]   = useState<string | null>(null);
   const [busca, setBusca]               = useState("");
   const [tab, setTab]                   = useState<TabType>("lista");
   const [expanded, setExpanded]         = useState<string | null>(null);
@@ -246,7 +269,48 @@ export default function Home() {
     } catch {}
   }, []);
 
-  useEffect(() => { fetchConcursos(); fetchHistorico(); }, [fetchConcursos, fetchHistorico]);
+  const fetchFavoritos = useCallback(async () => {
+    try {
+      const r = await fetch("/api/favoritos");
+      const d = await r.json();
+      if (d.ok) setFavoritos(d.favoritos);
+    } catch {}
+  }, []);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const r = await fetch("/api/stats");
+      const d = await r.json();
+      if (d.ok) setStats(d.stats);
+    } catch {}
+  }, []);
+
+  const toggleFavorito = async (c: import("@/lib/scraper").Concurso) => {
+    setFavoritando(c.id);
+    const ehFav = favoritos.some(f => f.concurso_id === c.id);
+    if (ehFav) {
+      await fetch("/api/favoritos", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ concurso_id: c.id }),
+      });
+    } else {
+      await fetch("/api/favoritos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ concurso_id: c.id, cargo: c.cargo, orgao: c.orgao, estado: c.estado }),
+      });
+    }
+    await fetchFavoritos();
+    setFavoritando(null);
+  };
+
+  useEffect(() => {
+    fetchConcursos();
+    fetchHistorico();
+    fetchFavoritos();
+    fetchStats();
+  }, [fetchConcursos, fetchHistorico, fetchFavoritos, fetchStats]);
 
   // Filtragem + ordenação
   const filtered = (() => {
@@ -261,6 +325,7 @@ export default function Home() {
       return true;
     });
 
+    if (salarioMin > 0)        list = list.filter(c => parseSalario(c.salario) >= salarioMin);
     if (sortBy === "salario")  list = [...list].sort((a, b) => parseSalario(b.salario) - parseSalario(a.salario));
     if (sortBy === "vagas")    list = [...list].sort((a, b) => parseVagas(b.vagas) - parseVagas(a.vagas));
     if (sortBy === "prazo")    list = [...list].sort((a, b) => {
@@ -432,7 +497,7 @@ export default function Home() {
 
       {/* ══════════════════════ TABS ══════════════════════ */}
       <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,.05)", padding: "0 20px", overflowX: "auto" }}>
-        {(["lista", "cards", "historico"] as TabType[]).map(t => (
+        {(["lista", "cards", "favoritos", "stats", "calendario", "historico"] as TabType[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             background: "none", border: "none",
             borderBottom: tab === t ? "2px solid #00C896" : "2px solid transparent",
@@ -441,13 +506,18 @@ export default function Home() {
             fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
             transition: "color .15s",
           }}>
-            {t === "lista" ? "Lista" : t === "cards" ? "Cards Instagram" : `Histórico (${historico.length})`}
+            {t === "lista" ? "Lista"
+              : t === "cards" ? "Cards Instagram"
+              : t === "favoritos" ? `⭐ Favoritos (${favoritos.length})`
+              : t === "stats" ? "📈 Estatísticas"
+              : t === "calendario" ? "🗓️ Calendário"
+              : `Histórico (${historico.length})`}
           </button>
         ))}
       </div>
 
       {/* ══════════════════════ FILTROS ══════════════════════ */}
-      {tab !== "historico" && (
+      {tab !== "historico" && tab !== "stats" && tab !== "calendario" && tab !== "favoritos" && (
         <div style={{
           padding: "10px 20px",
           display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center",
@@ -507,6 +577,26 @@ export default function Home() {
             <option value="salario">💰 Maior salário</option>
             <option value="vagas">🎯 Mais vagas</option>
           </select>
+
+          {/* Filtro salário mínimo */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,.3)", whiteSpace: "nowrap" }}>
+              💰 mín:
+            </span>
+            <select value={salarioMin} onChange={e => setSalarioMin(Number(e.target.value))} style={{
+              background: "#0C1E3E", border: "1px solid rgba(255,255,255,.1)",
+              color: salarioMin > 0 ? "#00C896" : "rgba(255,255,255,.6)",
+              borderRadius: 9, padding: "6px 10px", fontSize: 11, cursor: "pointer",
+            }}>
+              <option value={0}>Qualquer</option>
+              <option value={3000}>R$ 3.000+</option>
+              <option value={5000}>R$ 5.000+</option>
+              <option value={8000}>R$ 8.000+</option>
+              <option value={10000}>R$ 10.000+</option>
+              <option value={15000}>R$ 15.000+</option>
+              <option value={20000}>R$ 20.000+</option>
+            </select>
+          </div>
 
           {/* Formato dos cards */}
           {tab === "cards" && (
@@ -637,6 +727,9 @@ export default function Home() {
                       </Btn>
                       <Btn color="#FFB800" onClick={e => { e.stopPropagation(); marcarPostado(c); }} disabled={postado}>
                         {postado ? "Postado" : "Marcar postado"}
+                      </Btn>
+                      <Btn color="#F59E0B" onClick={e => { e.stopPropagation(); toggleFavorito(c); }} disabled={favoritando === c.id}>
+                        {favoritos.some(f => f.concurso_id === c.id) ? "⭐" : "☆"}
                       </Btn>
                       {(() => {
                         const isPdf = c.linkEdital.toLowerCase().endsWith(".pdf");
@@ -787,7 +880,240 @@ export default function Home() {
           </div>
         )}
 
-        
+        {/* ── FAVORITOS ── */}
+        {tab === "favoritos" && (
+          <div style={{ maxWidth: 980 }}>
+            <p style={{ color: "rgba(255,255,255,.25)", fontSize: 11, marginBottom: 20 }}>
+              Concursos marcados com ⭐ para acompanhar de perto.
+            </p>
+            {favoritos.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,255,255,.2)" }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>⭐</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhum favorito ainda</div>
+                <div style={{ fontSize: 12, marginTop: 6 }}>Clique em ☆ em qualquer concurso da lista</div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {favoritos.map(f => {
+                  const c = concursos.find(x => x.id === f.concurso_id);
+                  return (
+                    <div key={f.id} style={{
+                      background: "rgba(245,158,11,.03)", border: "1px solid rgba(245,158,11,.15)",
+                      borderRadius: 14, padding: "14px 18px",
+                      display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                    }}>
+                      <span style={{ fontSize: 18 }}>⭐</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{f.cargo}</div>
+                        <div style={{ color: "#00C896", fontSize: 12, marginTop: 2 }}>{f.orgao} — {f.estado}</div>
+                        {c && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                            <span style={{ background: "rgba(0,200,150,.08)", color: "#00C896", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 5 }}>{c.salario}</span>
+                            <span style={{ background: "rgba(167,139,250,.08)", color: "#A78BFA", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 5 }}>{c.vagas}</span>
+                            {c.status === "Inscricoes Abertas" && c.diasRestantes >= 0 && (
+                              <span style={{ background: c.diasRestantes <= 7 ? "rgba(255,75,75,.1)" : "rgba(0,200,150,.08)", color: c.diasRestantes <= 7 ? "#FF4B4B" : "#00C896", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 5 }}>
+                                {c.diasRestantes <= 7 ? `⚡ ${c.diasRestantes}d` : `📅 ${c.diasRestantes}d`}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {c && (
+                          <button onClick={() => { setTab("lista"); }} style={{ background: "rgba(0,200,150,.1)", border: "1px solid rgba(0,200,150,.2)", color: "#00C896", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+                            Ver na lista
+                          </button>
+                        )}
+                        <button onClick={() => fetch("/api/favoritos", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ concurso_id: f.concurso_id }) }).then(() => setFavoritos(prev => prev.filter(x => x.concurso_id !== f.concurso_id)))} style={{ background: "rgba(255,75,75,.08)", border: "1px solid rgba(255,75,75,.15)", color: "#FF4B4B", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+                          Remover
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ESTATÍSTICAS ── */}
+        {tab === "stats" && (
+          <div style={{ maxWidth: 800 }}>
+            {!stats ? (
+              <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,255,255,.2)" }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>📈</div>
+                <div>Carregando estatísticas...</div>
+              </div>
+            ) : (
+              <>
+                {/* Cards de totais */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 28 }}>
+                  {[
+                    { label: "Posts esta semana", value: stats.totalSemana, color: "#00C896" },
+                    { label: "Posts este mês",    value: stats.totalMes,    color: "#A78BFA" },
+                    { label: "Posts totais",      value: stats.totalGeral,  color: "#60A5FA" },
+                  ].map(s => (
+                    <div key={s.label} style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px 20px", textAlign: "center" }}>
+                      <div style={{ color: s.color, fontSize: 32, fontWeight: 900 }}>{s.value}</div>
+                      <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, marginTop: 4, letterSpacing: 1, textTransform: "uppercase" }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Posts por semana — barras */}
+                {stats.semanasData.length > 0 && (
+                  <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "20px", marginBottom: 20 }}>
+                    <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, letterSpacing: 1.5, marginBottom: 14, textTransform: "uppercase" }}>Posts por semana</div>
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 80 }}>
+                      {(() => {
+                        const max = Math.max(...stats.semanasData.map(s => s.total), 1);
+                        return stats.semanasData.map(s => (
+                          <div key={s.semana} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                            <div style={{ color: "rgba(255,255,255,.5)", fontSize: 9 }}>{s.total}</div>
+                            <div style={{ width: "100%", background: "#00C896", borderRadius: "4px 4px 0 0", height: `${(s.total / max) * 60}px`, minHeight: 4, transition: "height .3s" }} />
+                            <div style={{ color: "rgba(255,255,255,.25)", fontSize: 8, whiteSpace: "nowrap" }}>{s.label}</div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  {/* Top estados */}
+                  {stats.topEstados.length > 0 && (
+                    <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "20px" }}>
+                      <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, letterSpacing: 1.5, marginBottom: 14, textTransform: "uppercase" }}>Top estados</div>
+                      {stats.topEstados.map((e, i) => {
+                        const max = stats.topEstados[0].total;
+                        return (
+                          <div key={e.estado} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                            <span style={{ color: "rgba(255,255,255,.3)", fontSize: 10, width: 16, textAlign: "right" }}>{i + 1}</span>
+                            <span style={{ color: "#fff", fontSize: 12, fontWeight: 700, width: 28 }}>{e.estado}</span>
+                            <div style={{ flex: 1, background: "rgba(255,255,255,.06)", borderRadius: 4, height: 6 }}>
+                              <div style={{ width: `${(e.total / max) * 100}%`, background: "#00C896", borderRadius: 4, height: 6 }} />
+                            </div>
+                            <span style={{ color: "rgba(255,255,255,.4)", fontSize: 11, width: 20, textAlign: "right" }}>{e.total}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Top cargos */}
+                  {stats.topCargos.length > 0 && (
+                    <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "20px" }}>
+                      <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, letterSpacing: 1.5, marginBottom: 14, textTransform: "uppercase" }}>Top cargos</div>
+                      {stats.topCargos.map((c, i) => {
+                        const max = stats.topCargos[0].total;
+                        return (
+                          <div key={c.cargo} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                            <span style={{ color: "rgba(255,255,255,.3)", fontSize: 10, width: 16, textAlign: "right" }}>{i + 1}</span>
+                            <div style={{ flex: 1, background: "rgba(255,255,255,.06)", borderRadius: 4, height: 6 }}>
+                              <div style={{ width: `${(c.total / max) * 100}%`, background: "#A78BFA", borderRadius: 4, height: 6 }} />
+                            </div>
+                            <span style={{ color: "rgba(255,255,255,.4)", fontSize: 11, maxWidth: 100, textAlign: "right", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.cargo} ({c.total})</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {stats.totalGeral === 0 && (
+                  <div style={{ textAlign: "center", padding: "40px 20px", color: "rgba(255,255,255,.2)" }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>📭</div>
+                    <div style={{ fontSize: 13 }}>Nenhum post registrado ainda. Marque concursos como postados para ver as estatísticas.</div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── CALENDÁRIO DE PROVAS ── */}
+        {tab === "calendario" && (
+          <div style={{ maxWidth: 800 }}>
+            <p style={{ color: "rgba(255,255,255,.25)", fontSize: 11, marginBottom: 20 }}>
+              Datas de prova e resultado dos concursos ativos.
+            </p>
+            {(() => {
+              const comData = concursos.filter(c => c.dataProva && c.dataProva !== "-");
+              if (comData.length === 0) return (
+                <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,255,255,.2)" }}>
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>🗓️</div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Nenhuma data de prova encontrada</div>
+                  <div style={{ fontSize: 12, marginTop: 6 }}>As datas aparecem quando o sistema encontra informações nos editais</div>
+                </div>
+              );
+
+              // Agrupa por mês
+              const porMes: Record<string, typeof comData> = {};
+              for (const c of comData) {
+                const partes = c.dataProva.split("/");
+                if (partes.length < 3) continue;
+                const chave = `${partes[2]}-${partes[1]}`;
+                if (!porMes[chave]) porMes[chave] = [];
+                porMes[chave].push(c);
+              }
+
+              return Object.entries(porMes).sort(([a], [b]) => a.localeCompare(b)).map(([mesAno, lista]) => {
+                const [ano, mes] = mesAno.split("-");
+                const nomeMes = new Date(Number(ano), Number(mes) - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+                return (
+                  <div key={mesAno} style={{ marginBottom: 24 }}>
+                    <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, letterSpacing: 1.5, marginBottom: 10, textTransform: "uppercase" }}>
+                      📅 {nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {lista.sort((a, b) => a.dataProva.localeCompare(b.dataProva)).map(c => {
+                        const hoje = new Date(); hoje.setHours(0,0,0,0);
+                        const [d, m, y] = c.dataProva.split("/").map(Number);
+                        const dataProva = new Date(y, m - 1, d);
+                        const diasParaProva = Math.ceil((dataProva.getTime() - hoje.getTime()) / 86400000);
+                        const passada = diasParaProva < 0;
+                        return (
+                          <div key={c.id} style={{
+                            background: passada ? "rgba(255,255,255,.01)" : "rgba(167,139,250,.04)",
+                            border: `1px solid ${passada ? "rgba(255,255,255,.05)" : "rgba(167,139,250,.2)"}`,
+                            borderRadius: 12, padding: "12px 16px",
+                            display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+                            opacity: passada ? 0.5 : 1,
+                          }}>
+                            <div style={{
+                              background: passada ? "rgba(255,255,255,.05)" : "rgba(167,139,250,.15)",
+                              borderRadius: 10, padding: "8px 14px", textAlign: "center", flexShrink: 0,
+                            }}>
+                              <div style={{ color: passada ? "rgba(255,255,255,.3)" : "#C4B5FD", fontSize: 20, fontWeight: 900 }}>
+                                {c.dataProva.split("/")[0]}
+                              </div>
+                              <div style={{ color: "rgba(255,255,255,.3)", fontSize: 9, letterSpacing: 1 }}>
+                                {new Date(y, m - 1, d).toLocaleDateString("pt-BR", { month: "short" }).toUpperCase()}
+                              </div>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ color: passada ? "rgba(255,255,255,.5)" : "#fff", fontWeight: 700, fontSize: 14 }}>{c.cargo}</div>
+                              <div style={{ color: passada ? "rgba(0,200,150,.5)" : "#00C896", fontSize: 12, marginTop: 2 }}>{c.orgao} — {c.estado}</div>
+                              {c.banca !== "-" && <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, marginTop: 1 }}>{c.banca}</div>}
+                            </div>
+                            {!passada ? (
+                              <span style={{ background: diasParaProva <= 7 ? "rgba(255,75,75,.12)" : "rgba(167,139,250,.12)", color: diasParaProva <= 7 ? "#FF4B4B" : "#A78BFA", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20, whiteSpace: "nowrap" }}>
+                                {diasParaProva === 0 ? "Hoje!" : diasParaProva === 1 ? "Amanhã!" : `${diasParaProva}d`}
+                              </span>
+                            ) : (
+                              <span style={{ color: "rgba(255,255,255,.2)", fontSize: 11 }}>Realizada</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        )}
+
         {/* ── HISTÓRICO ── */}
 
         {tab === "historico" && (
