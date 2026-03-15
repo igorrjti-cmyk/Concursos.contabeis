@@ -6,7 +6,7 @@ import { gerarLegenda } from "@/lib/legenda";
 import type { Concurso } from "@/lib/scraper";
 import type { PostHistorico } from "@/app/api/historico/route";
 
-type FilterStatus = "todos" | "Inscricoes Abertas" | "Previsto";
+type FilterStatus = "todos" | "Inscricoes Abertas" | "Aguardando Prova" | "Previsto";
 type TabType = "lista" | "cards" | "historico" | "favoritos" | "stats" | "calendario";
 type CardFormato = "feed" | "stories";
 type SortBy = "padrao" | "salario" | "vagas" | "prazo";
@@ -32,12 +32,14 @@ interface StatsData {
 
 const STATUS_DOT: Record<string, string> = {
   "Inscricoes Abertas": "#00C896",
+  "Aguardando Prova":   "#A78BFA",
   "Previsto":           "#FFB800",
   "Encerrado":          "#FF4B4B",
 };
 
 const STATUS_BG: Record<string, string> = {
   "Inscricoes Abertas": "rgba(0,200,150,.08)",
+  "Aguardando Prova":   "rgba(167,139,250,.08)",
   "Previsto":           "rgba(255,184,0,.08)",
   "Encerrado":          "rgba(255,75,75,.08)",
 };
@@ -488,6 +490,7 @@ export default function Home() {
       <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,.05)", overflowX: "auto" }} className="stats-bar">
         <StatCard label="Total"             value={contagens.total}    color="#fff"     />
         <StatCard label="Inscrições Abertas" value={contagens.abertas}  color="#00C896"  sub={`${contagens.urgentes} urgentes`} />
+        <StatCard label="Aguardando Prova"   value={concursos.filter(c => c.status === "Aguardando Prova").length} color="#A78BFA" />
         <StatCard label="Previstos"          value={contagens.previstos} color="#FFB800" />
         <StatCard label="Com Data de Prova"  value={contagens.comProva}  color="#A78BFA" />
         {contagens.urgentes > 0 && (
@@ -535,7 +538,7 @@ export default function Home() {
           />
 
           {/* Filtro status */}
-          {(["todos", "Inscricoes Abertas", "Previsto"] as FilterStatus[]).map(f => (
+          {(["todos", "Inscricoes Abertas", "Aguardando Prova", "Previsto"] as FilterStatus[]).map(f => (
             <button key={f} onClick={() => setFilter(f)} style={{
               background: filter === f ? "rgba(0,200,150,.1)" : "transparent",
               border: "1px solid " + (filter === f ? "#00C896" : "rgba(255,255,255,.1)"),
@@ -544,7 +547,7 @@ export default function Home() {
               cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
               transition: "all .15s",
             }}>
-              {f === "todos" ? "Todos" : f === "Inscricoes Abertas" ? "Inscrições Abertas" : f}
+              {f === "todos" ? "Todos" : f === "Inscricoes Abertas" ? "Inscrições Abertas" : f === "Aguardando Prova" ? "Aguardando Prova" : f}
             </button>
           ))}
 

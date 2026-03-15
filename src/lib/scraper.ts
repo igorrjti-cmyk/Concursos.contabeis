@@ -26,12 +26,13 @@ export interface Concurso {
   nivel: string;
   dataProva: string;
   dataResultado: string;
-  status: "Inscricoes Abertas" | "Previsto" | "Encerrado";
+  status: "Inscricoes Abertas" | "Aguardando Prova" | "Previsto" | "Encerrado";
   dataCaptura: string;
 }
 
 export function statusDisplay(s: string): string {
   if (s === "Inscricoes Abertas") return "Inscrições Abertas";
+  if (s === "Aguardando Prova")   return "Aguardando Prova";
   return s;
 }
 
@@ -337,6 +338,93 @@ function detectStatus(inscricaoAte: string): Concurso["status"] {
   const dias = calcDiasRestantes(inscricaoAte);
   if (dias < 0) return "Previsto";
   return "Inscricoes Abertas";
+}
+
+/**
+ * Reclassifica um concurso "Previsto" para "Aguardando Prova" se:
+ *   - Tem dataProva válida E a prova ainda não ocorreu
+ * Isso diferencia concursos sem data (Previsto) dos que têm cronograma (Aguardando Prova)
+ */
+function reclassificarStatus(
+  status: Concurso["status"],
+  dataProva: string,
+  dataResultado: string
+): Concurso["status"] {
+  if (status !== "Previsto") return status;
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  // Se tem data de prova futura → Aguardando Prova
+  if (dataProva && dataProva !== "-") {
+    const [d, m, y] = dataProva.split("/").map(Number);
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+      const dp = new Date(y, m - 1, d);
+      if (dp >= hoje) return "Aguardando Prova";
+      // Prova já passou — verifica resultado
+      if (dataResultado && dataResultado !== "-") {
+        const [dr, mr, yr] = dataResultado.split("/").map(Number);
+        const dRes = new Date(yr, mr - 1, dr);
+        if (dRes >= hoje) return "Aguardando Prova"; // resultado ainda não saiu
+      }
+      // Prova passou e resultado também → Encerrado (descartado na filtragem)
+      return "Encerrado";
+    }
+  }
+
+  // Tem data de resultado futura mas sem prova → Aguardando Prova
+  if (dataResultado && dataResultado !== "-") {
+    const [dr, mr, yr] = dataResultado.split("/").map(Number);
+    if (!isNaN(dr) && !isNaN(mr) && !isNaN(yr)) {
+      const dRes = new Date(yr, mr - 1, dr);
+      if (dRes >= hoje) return "Aguardando Prova";
+    }
+  }
+
+  return "Previsto";
+}
+
+// ─── Reclassificação de status pós-scraping ──────────────────────────────────
+
+/**
+ * Reclassifica "Previsto" para "Aguardando Prova" quando o edital tem
+ * data de prova futura. Se prova e resultado já passaram → "Encerrado".
+ */
+function reclassificarStatus(
+  status: Concurso["status"],
+  dataProva: string,
+  dataResultado: string
+): Concurso["status"] {
+  if (status !== "Previsto") return status;
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  if (dataProva && dataProva !== "-") {
+    const [d, m, y] = dataProva.split("/").map(Number);
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+      const dp = new Date(y, m - 1, d);
+      if (dp >= hoje) return "Aguardando Prova";
+      if (dataResultado && dataResultado !== "-") {
+        const [dr, mr, yr] = dataResultado.split("/").map(Number);
+        if (!isNaN(dr) && !isNaN(mr) && !isNaN(yr)) {
+          const dRes = new Date(yr, mr - 1, dr);
+          if (dRes >= hoje) return "Aguardando Prova";
+        }
+      }
+      return "Encerrado";
+    }
+  }
+
+  if (dataResultado && dataResultado !== "-") {
+    const [dr, mr, yr] = dataResultado.split("/").map(Number);
+    if (!isNaN(dr) && !isNaN(mr) && !isNaN(yr)) {
+      const dRes = new Date(yr, mr - 1, dr);
+      if (dRes >= hoje) return "Aguardando Prova";
+    }
+  }
+
+  return "Previsto";
 }
 
 // ─── Filtro contábil robusto ──────────────────────────────────────────────────
@@ -814,19 +902,36 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       nivel:          item.nivel || "Superior",
       dataProva:      det.dataProva,
       dataResultado:  det.dataResultado,
-      status:          item.status as Concurso["status"],
+      status:          reclassificarStatus(
+        item.status as Concurso["status"],
+        det.dataProva,
+        det.dataResultado
+      ),
       dataCaptura:     new Date().toISOString(),
     });
   }
 
-  // Inscrições abertas primeiro (por prazo crescente), depois Previstos
-  return completos.sort((a, b) => {
-    if (a.status === b.status) {
+  // Ordem: Inscrições Abertas → Aguardando Prova → Previsto
+  const ordemStatus: Record<string, number> = {
+    "Inscricoes Abertas": 0,
+    "Aguardando Prova":   1,
+    "Previsto":           2,
+  };
+  return completos
+    .filter(c => c.status !== "Encerrado") // remove os que a prova já passou
+    .sort((a, b) => {
+      const oa = ordemStatus[a.status] ?? 2;
+      const ob = ordemStatus[b.status] ?? 2;
+      if (oa !== ob) return oa - ob;
       if (a.status === "Inscricoes Abertas") return a.diasRestantes - b.diasRestantes;
+      // Aguardando Prova: ordena por data da prova
+      if (a.status === "Aguardando Prova" && a.dataProva !== "-" && b.dataProva !== "-") {
+        return a.dataProva.split("/").reverse().join("").localeCompare(
+          b.dataProva.split("/").reverse().join("")
+        );
+      }
       return 0;
-    }
-    return a.status === "Inscricoes Abertas" ? -1 : 1;
-  });
+    });
 }
 
 // ─── Fallback ─────────────────────────────────────────────────────────────────
