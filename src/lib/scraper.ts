@@ -402,6 +402,18 @@ function ehConcursoContabil(
   const tudo   = (cargo + " " + title + " " + orgao + " " + textoEdital).toLowerCase();
   const titLow = title.toLowerCase();
 
+  // Rejeita processo seletivo em qualquer forma
+  const textoTudo = (cargo + " " + title + " " + orgao).toLowerCase();
+  if (
+    textoTudo.includes("processo seletivo") ||
+    textoTudo.includes("seleção simplificada") ||
+    textoTudo.includes("selecao simplificada") ||
+    textoTudo.includes("seletivo simplificado") ||
+    textoTudo.includes("contratação temporária") ||
+    / pss[\s,.]/.test(textoTudo) ||
+    / pst[\s,.]/.test(textoTudo)
+  ) return false;
+
   // Rejeita se title é claramente outra área
   if (AREAS_EXCLUIDAS_TITLE.some(t => titLow.includes(t))) return false;
 
@@ -479,13 +491,15 @@ export interface DetalhesEdital {
   banca: string;
   linkEdital: string;
   cargosContabeis: string[];
-  requisito: string; // "CRC" | "Superior - Ciências Contábeis" | "Técnico CRC" | "-"
+  requisito: string;
+  ehProcessoSeletivo: boolean; // true = descartar — é PS, não concurso público
 }
 
 export function extrairDetalhes(texto: string): DetalhesEdital {
   const out: DetalhesEdital = {
     dataProva: "-", dataResultado: "-", banca: "-",
     linkEdital: "", cargosContabeis: [], requisito: "-",
+    ehProcessoSeletivo: false,
   };
 
   // ── Converte datas por extenso para DD/MM/AAAA ──────────────────────────────
@@ -497,14 +511,21 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
     novembro:"11", dezembro:"12",
   };
   function converterDataExtenso(t: string): string {
-    return t.replace(
+    let r = t;
+    // 1. Ordinais: "1º/3/2026" | "1°/3/2026" → "01/03/2026"
+    r = r.replace(
+      /(\d{1,2})[º°o]\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})/gi,
+      (_, d, m, y) => d.padStart(2,"0") + "/" + m.padStart(2,"0") + "/" + y
+    );
+    // 2. Por extenso: "17 de maio de 2026" → "17/05/2026"
+    r = r.replace(
       /(\d{1,2})\s+de\s+([a-záéíóúâêîôûãõç]+)\s+de\s+(\d{4})/gi,
-      (_, d, mes, y) => {
+      (orig, d, mes, y) => {
         const m = MESES[mes.toLowerCase()];
-        if (!m) return _;
-        return d.padStart(2, "0") + "/" + m + "/" + y;
+        return m ? d.padStart(2, "0") + "/" + m + "/" + y : orig;
       }
     );
+    return r;
   }
   const textoNorm = converterDataExtenso(texto);
 
@@ -521,6 +542,20 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
     /(\d{2}\/\d{2}\/\d{4})[^.]{0,30}?prova/i,
   ];
   // Testa primeiro no texto com datas convertidas (pega "17 de maio de 2026")
+  const provaRe = [
+    /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
+    /data\s+de\s+realiza[cç][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?\s+(?:objetivas?|escritas?|pr[áa]ticas?)\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
+    /previstas?\s+para\s+(?:ser(?:em)?\s+)?aplicadas?\s+em\s+(\d{2}\/\d{2}\/\d{4})/i,
+    /aplicadas?\s+na\s+cidade\s+de\s+[^,]{1,40},\s+no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
+    /no\s+dia\s+(\d{2}\/\d{2}\/\d{4})[^\n]{0,60}prova/i,
+    /prova[^\n]{0,60}no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
+    /aplicadas?\s+(?:na\s+data\s+(?:prevista\s+)?de\s+)?(\d{2}\/\d{2}\/\d{4})/i,
+    /data\s+prov[aá]vel\s+(?:da\s+prova\s+)?[:\-]?\s*(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?[.\s\-]{2,}(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?\s*:\s*(\d{2}\/\d{2}\/\d{4})/i,
+    /(\d{2}\/\d{2}\/\d{4})[^.]{0,30}?prova/i,
+  ];
   for (const re of provaRe) {
     const m = textoNorm.match(re);
     if (m?.[1]) { out.dataProva = m[1]; break; }
@@ -590,6 +625,20 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
     out.requisito = "Nível Superior";
   }
 
+  // Detecta se o texto indica processo seletivo (não concurso público)
+  const textoNormPS = textoLow.replace(/
+/g, " ");
+  if (
+    textoNormPS.includes("processo seletivo simplificado") ||
+    textoNormPS.includes("seleção simplificada") ||
+    textoNormPS.includes("selecao simplificada") ||
+    textoNormPS.includes("contratação temporária") ||
+    /\bpss\b/.test(textoNormPS) ||
+    (textoNormPS.includes("processo seletivo") && !textoNormPS.includes("concurso público"))
+  ) {
+    out.ehProcessoSeletivo = true;
+  }
+
   return out;
 }
 
@@ -621,12 +670,18 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const ehPS =
       titleLow.includes("processo seletivo") ||
       titleLow.includes("processo simplificado") ||
-      titleLow.includes("sele\u00e7\u00e3o simplificada") ||
+      titleLow.includes("seleção simplificada") ||
       titleLow.includes("selecao simplificada") ||
+      titleLow.includes("seletivo simplificado") ||
+      titleLow.includes("contratação temporária") ||
+      titleLow.includes("contratacao temporaria") ||
+      titleLow.includes("credenciamento") ||
       / pss[\s,.]/.test(titleLow) || titleLow.endsWith(" pss") ||
       / pst[\s,.]/.test(titleLow) || titleLow.endsWith(" pst") ||
       hrefLow.includes("processo-seletivo") ||
-      hrefLow.includes("selecao-simplificada");
+      hrefLow.includes("processo-simplificado") ||
+      hrefLow.includes("selecao-simplificada") ||
+      hrefLow.includes("seletivo-simplificado");
     if (ehPS) return;
 
     links.push({ href: href.startsWith("http") ? href : BASE_URL + href, orgao: texto, title });
@@ -734,6 +789,7 @@ async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   const empty: DetalhesEdital = {
     dataProva: "-", dataResultado: "-", banca: "-",
     linkEdital: "", cargosContabeis: [], requisito: "-",
+    ehProcessoSeletivo: false,
   };
   if (!url) return empty;
   const html = await fetchComTimeout(url);
@@ -846,6 +902,12 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     if (i < LIMITE_DETALHE && item.linkNoticia) {
       det = await scrapeDetalhe(item.linkNoticia);
     }
+
+    // Descarta se o texto da notícia indica processo seletivo
+    if (det.ehProcessoSeletivo) continue;
+
+    // Descarta se o texto da notícia indica processo seletivo
+    if (det.ehProcessoSeletivo) continue;
 
     // Segunda chance no filtro: "Vários Cargos" com cargosContabeis no edital = válido
     // Sem cargos contábeis encontrados E cargo genérico = pula

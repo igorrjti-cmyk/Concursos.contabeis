@@ -17,13 +17,30 @@ const MESES: Record<string, string> = {
 };
 
 function normalizarDatas(texto: string): string {
-  return texto.replace(
+  let t = texto;
+
+  // 1. Ordinais: "1º/3/2026" | "1°/3/2026" | "1o/3/2026" → "01/03/2026"
+  t = t.replace(
+    /(\d{1,2})[º°o]\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})/gi,
+    (_, d, m, y) => d.padStart(2,"0") + "/" + m.padStart(2,"0") + "/" + y
+  );
+
+  // 2. Datas com espaço ao redor da barra: "1 / 3 / 2026" → "01/03/2026"
+  t = t.replace(
+    /(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})/g,
+    (_, d, m, y) => d.padStart(2,"0") + "/" + m.padStart(2,"0") + "/" + y
+  );
+
+  // 3. Por extenso: "17 de maio de 2026" → "17/05/2026"
+  t = t.replace(
     /(\d{1,2})\s+de\s+([a-záéíóúâêîôûãõç]+)\s+de\s+(\d{4})/gi,
     (orig, d, mes, y) => {
       const m = MESES[mes.toLowerCase()];
       return m ? d.padStart(2, "0") + "/" + m + "/" + y : orig;
     }
   );
+
+  return t;
 }
 
 // ─── Bancas conhecidas ────────────────────────────────────────────────────────
@@ -157,14 +174,32 @@ function extrairBanca(texto: string): string {
 // ─── Data de prova ────────────────────────────────────────────────────────────
 function extrairDataProva(textoNorm: string): string {
   const padroes = [
-    /aplica[çc][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
-    /data\s+de\s+realiza[çc][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
+    // "Aplicação das Provas Objetivas: 17/05/2026"
+    /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
+    // "Data de Realização das Provas: 17/05/2026"
+    /data\s+de\s+realiza[cç][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
+    // "Provas Objetivas: 17/05/2026"
     /provas?\s+(?:objetivas?|escritas?|pr[áa]ticas?)\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
+    // "previstas para serem aplicadas em 17/05/2026"
     /previstas?\s+para\s+(?:ser(?:em)?\s+)?aplicadas?\s+em\s+(\d{2}\/\d{2}\/\d{4})/i,
+    // "serão aplicadas na cidade de X, no dia 08/02/2026"  ← padrão Câmara de Londrina
+    /aplicadas?\s+na\s+cidade\s+de\s+[^,]{1,40},\s+no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
+    // "no dia 08/02/2026" próximo de "prova"
+    /no\s+dia\s+(\d{2}\/\d{2}\/\d{4})[^
+]{0,60}prova/i,
+    /prova[^
+]{0,60}no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
+    // "aplicadas em 08/02/2026"
     /aplicadas?\s+(?:na\s+data\s+de\s+)?(\d{2}\/\d{2}\/\d{4})/i,
+    // "data provável da prova: 08/02/2026"
     /data\s+prov[aá]vel\s+(?:da\s+prova\s+)?[:\-]?\s*(\d{2}\/\d{2}\/\d{4})/i,
-    /(\d{2}\/\d{2}\/\d{4})[^\n]{0,40}prova/i,
-    /prova[^\n]{0,40}(\d{2}\/\d{2}\/\d{4})/i,
+    // Cronograma: "Provas ............. 08/02/2026"
+    /provas?[.\s\-]{2,}(\d{2}\/\d{2}\/\d{4})/i,
+    // Genérico: data perto da palavra prova
+    /(\d{2}\/\d{2}\/\d{4})[^
+]{0,40}prova/i,
+    /prova[^
+]{0,40}(\d{2}\/\d{2}\/\d{4})/i,
   ];
   for (const re of padroes) {
     const m = textoNorm.match(re);
