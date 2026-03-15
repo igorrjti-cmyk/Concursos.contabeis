@@ -1,6 +1,6 @@
 -- ============================================================
 -- SETUP DO BANCO — execute no SQL Editor do Supabase
--- (Dashboard → SQL Editor → New query → cole e Execute)
+-- Seguro para rodar múltiplas vezes (idempotente)
 -- ============================================================
 
 -- ── 1. Cache dos concursos scrapeados ──────────────────────
@@ -24,9 +24,6 @@ CREATE INDEX IF NOT EXISTS idx_historico_concurso_id
   ON historico_posts (concurso_id, posted_at DESC);
 
 -- ── 3. Fila de agendamentos para o Instagram ───────────────
---   status: 'pendente' | 'publicando' | 'publicado' | 'erro'
---   formato: 'feed' | 'stories'
---   agendado_para: NULL = publicar o quanto antes
 CREATE TABLE IF NOT EXISTS agendamentos (
   id              BIGSERIAL     PRIMARY KEY,
   concurso_id     TEXT          NOT NULL,
@@ -54,7 +51,12 @@ ALTER TABLE cache_concursos  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE historico_posts  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agendamentos     ENABLE ROW LEVEL SECURITY;
 
--- service_role bypassa RLS — bloqueamos apenas anon
+-- Remove políticas antigas antes de recriar (evita erro "already exists")
+DROP POLICY IF EXISTS "deny anon cache"        ON cache_concursos;
+DROP POLICY IF EXISTS "deny anon historico"    ON historico_posts;
+DROP POLICY IF EXISTS "deny anon agendamentos" ON agendamentos;
+
+-- Recria as políticas
 CREATE POLICY "deny anon cache"
   ON cache_concursos FOR ALL TO anon USING (false);
 CREATE POLICY "deny anon historico"
