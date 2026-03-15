@@ -487,27 +487,53 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
     linkEdital: "", cargosContabeis: [], requisito: "-",
   };
 
-  // Data da prova
+  // ── Converte datas por extenso para DD/MM/AAAA ──────────────────────────────
+  // Ex: "17 de maio de 2026" → "17/05/2026"
+  const MESES: Record<string, string> = {
+    janeiro:"01", fevereiro:"02", março:"03", marco:"03",
+    abril:"04", maio:"05", junho:"06", julho:"07",
+    agosto:"08", setembro:"09", outubro:"10",
+    novembro:"11", dezembro:"12",
+  };
+  function converterDataExtenso(t: string): string {
+    return t.replace(
+      /(\d{1,2})\s+de\s+([a-záéíóúâêîôûãõç]+)\s+de\s+(\d{4})/gi,
+      (_, d, mes, y) => {
+        const m = MESES[mes.toLowerCase()];
+        if (!m) return _;
+        return d.padStart(2, "0") + "/" + m + "/" + y;
+      }
+    );
+  }
+  const textoNorm = converterDataExtenso(texto);
+
+  // Data da prova — testa no texto original E no texto com datas convertidas
   const provaRe = [
+    // Padrões com DD/MM/AAAA
     /provas?\s+(?:objetiva[s]?|escrita[s]?|pratica[s]?)(?:[^.]{0,80}?)(\d{2}\/\d{2}\/\d{4})/i,
     /aplicac[aã]o\s+das?\s+provas?(?:[^.]{0,60}?)(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+(?:prevista\s+)?(?:de\s+)?(?:realiz|aplicac)[^.]{0,40}?(\d{2}\/\d{2}\/\d{4})/i,
     /provas?\s*:\s*(\d{2}\/\d{2}\/\d{4})/i,
+    /previstas?\s+para\s+(?:ser(?:em)?\s+)?aplicadas?\s+em\s+(\d{2}\/\d{2}\/\d{4})/i,
+    /aplicadas?\s+(?:na\s+data\s+(?:prevista\s+)?de\s+)?(\d{2}\/\d{2}\/\d{4})/i,
+    /data\s+prov[aá]vel\s+de\s+(\d{2}\/\d{2}\/\d{4})/i,
     /(\d{2}\/\d{2}\/\d{4})[^.]{0,30}?prova/i,
   ];
+  // Testa primeiro no texto com datas convertidas (pega "17 de maio de 2026")
   for (const re of provaRe) {
-    const m = texto.match(re);
+    const m = textoNorm.match(re);
     if (m?.[1]) { out.dataProva = m[1]; break; }
   }
 
-  // Data do resultado
+  // Data do resultado — também usa textoNorm (datas por extenso convertidas)
   const resRe = [
     /(?:divulg|publica)[^.]{0,50}?(?:resultado|gabarito)[^.]{0,50}?(\d{2}\/\d{2}\/\d{4})/i,
     /(?:resultado|gabarito)[^.]{0,60}?(\d{2}\/\d{2}\/\d{4})/i,
-    /(\d{2}\/\d{2}\/\d{4})[^.]{0,30}?(?:resultado|gabarito)/i,
+    /homologa[^.]{0,60}?(\d{2}\/\d{2}\/\d{4})/i,
+    /(\d{2}\/\d{2}\/\d{4})[^.]{0,30}?(?:resultado|gabarito|homologa)/i,
   ];
   for (const re of resRe) {
-    const m = texto.match(re);
+    const m = textoNorm.match(re);
     if (m?.[1] && m[1] !== out.dataProva) { out.dataResultado = m[1]; break; }
   }
 
