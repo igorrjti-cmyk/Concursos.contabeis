@@ -972,12 +972,17 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       ehProcessoSeletivo: false,
     };
 
+    // ── Filtro de ano rápido (antes de fazer o scrapeDetalhe) ─────────────
+    // Usa datas já disponíveis na listagem para descartar antigos sem HTTP extra
+    const inscricaoCheck = item.inscricao || item.inscricaoAte || "";
+    const anosRapidos = (inscricaoCheck.match(/\d{4}/g) || []).map(Number).filter(a => a > 2000);
+    if (anosRapidos.length > 0 && Math.max(...anosRapidos) < new Date().getFullYear() - 1) {
+      continue; // inscrição muito antiga — descarta sem nem acessar a notícia
+    }
+
     if (i < LIMITE_DETALHE && item.linkNoticia) {
       det = await scrapeDetalhe(item.linkNoticia);
     }
-
-    // Descarta se o texto da notícia indica processo seletivo
-    if (det.ehProcessoSeletivo) continue;
 
     // Descarta se o texto da notícia indica processo seletivo
     if (det.ehProcessoSeletivo) continue;

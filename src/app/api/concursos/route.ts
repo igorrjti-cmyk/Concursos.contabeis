@@ -97,7 +97,7 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
     .filter(c => c.status !== "Encerrado");
 }
 
-const CACHE_KEY = "concursos:v15"; // v4 = nova chave, invalida cache antigo
+const CACHE_KEY = "concursos:v16"; // v4 = nova chave, invalida cache antigo
 const CACHE_TTL_HORAS = 6;
 
 interface CacheRow {
