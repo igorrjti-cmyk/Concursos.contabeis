@@ -52,15 +52,11 @@ const VAGAS_URLS = [
   "/vagas/contador-municipal",
 ];
 
-// URLs de concursos em andamento (inscrições encerradas, aguardando prova)
-const CONCURSOS_URLS = [
-  "/concursos/contador",
-  "/concursos/contadora",
-  "/concursos/contabilidade",
-  "/concursos/tecnico-em-contabilidade",
-  "/concursos/analista-contabil",
-  "/concursos/auditor-fiscal",
-];
+// Nota: o PCI Concursos não possui seção separada para concursos aguardando prova.
+// Todos os concursos ativos (incluindo inscrições recém-encerradas com prova futura)
+// ficam em /vagas/. O status "Aguardando Prova" é calculado automaticamente pelo
+// reclassificarStatus() após as inscrições encerrarem.
+const CONCURSOS_URLS: string[] = [];
 
 
 const FETCH_HEADERS = {
