@@ -424,9 +424,144 @@ function HomeContent() {
     }
   };
 
+  // Gera feed + stories de uma vez e baixa como ZIP
+  const downloadAmbos = async (c: Concurso) => {
+    setDownloadingId(c.id + "ambos");
+    try {
+      const h2c    = (await import("html2canvas")).default;
+      const JSZip  = (await import("jszip")).default;
+      await document.fonts.ready;
+
+      const blobs: { nome: string; blob: Blob }[] = [];
+
+      for (const fmt of ["feed", "stories"] as CardFormato[]) {
+        // O card de stories pode não estar renderizado se o formato atual for "feed"
+        // Renderizamos temporariamente o card invisível se necessário
+        let el = document.getElementById("card-" + c.id + "-" + fmt);
+        let elTemp: HTMLDivElement | null = null;
+
+        if (!el) {
+          // Cria um container temporário fora da tela para renderizar o formato ausente
+          elTemp = document.createElement("div");
+          elTemp.style.cssText = "position:fixed;left:-9999px;top:0;";
+          document.body.appendChild(elTemp);
+
+          const { createRoot } = await import("react-dom/client");
+          const React = await import("react");
+          const { default: InstagramCard } = await import("@/components/InstagramCard");
+          const root = createRoot(elTemp);
+          root.render(React.createElement(InstagramCard, { concurso: c, formato: fmt }));
+          await new Promise(r => setTimeout(r, 300)); // aguarda render
+          el = elTemp.firstElementChild as HTMLElement;
+        }
+
+        if (!el) continue;
+        const canvas = await h2c(el, { scale: 3, backgroundColor: null, useCORS: true });
+        const blob   = await new Promise<Blob>(res =>
+          canvas.toBlob(b => res(b!), "image/png")
+        );
+        blobs.push({ nome: `${c.id}-${fmt}.png`, blob });
+
+        if (elTemp) document.body.removeChild(elTemp);
+      }
+
+      // Empacota em ZIP
+      const zip = new JSZip();
+      for (const { nome, blob } of blobs) zip.file(nome, blob);
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+
+      const a = document.createElement("a");
+      a.download = `${c.id}-instagram.zip`;
+      a.href = URL.createObjectURL(zipBlob);
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const jaPostado = (id: string) => {
     const hoje = new Date().toDateString();
     return historico.some(h => h.concurso_id === id && new Date(h.posted_at).toDateString() === hoje);
+  };
+
+  // Envia feed + stories para a extensão do Chrome publicar no Instagram
+  const publicarInstagram = async (c: Concurso) => {
+    setDownloadingId(c.id + "ig");
+    try {
+      const h2c = (await import("html2canvas")).default;
+      await document.fonts.ready;
+
+      // Gera feed
+      const elFeed = document.getElementById("card-" + c.id + "-feed");
+      if (!elFeed) throw new Error("Card feed não encontrado. Vá para a aba Cards primeiro.");
+      const canvasFeed   = await h2c(elFeed,   { scale: 3, backgroundColor: null, useCORS: true });
+      const feedBase64   = canvasFeed.toDataURL("image/png");
+
+      // Gera stories — renderiza em container temporário se não estiver visível
+      let elStories = document.getElementById("card-" + c.id + "-stories");
+      let tempDiv: HTMLDivElement | null = null;
+
+      if (!elStories) {
+        tempDiv = document.createElement("div");
+        tempDiv.style.cssText = "position:fixed;left:-9999px;top:0;";
+        document.body.appendChild(tempDiv);
+        const { createRoot }        = await import("react-dom/client");
+        const React                 = await import("react");
+        const { default: IGCard }   = await import("@/components/InstagramCard");
+        const root = createRoot(tempDiv);
+        root.render(React.createElement(IGCard, { concurso: c, formato: "stories" }));
+        await new Promise(r => setTimeout(r, 400));
+        elStories = tempDiv.firstElementChild as HTMLElement;
+      }
+
+      const canvasStories  = await h2c(elStories, { scale: 3, backgroundColor: null, useCORS: true });
+      const storiesBase64  = canvasStories.toDataURL("image/png");
+      if (tempDiv) document.body.removeChild(tempDiv);
+
+      const legenda = gerarLegenda(c);
+
+      // Tenta enviar para a extensão via chrome.runtime
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const chrome = (window as any).chrome;
+      if (!chrome?.runtime?.sendMessage) {
+        throw new Error("Extensão não encontrada. Instale a extensão Concursos Contábeis no Chrome.");
+      }
+
+      // O ID da extensão precisa estar no manifest como "externally_connectable"
+      // Em dev usa "*" — em produção substitua pelo ID real da extensão instalada
+      const EXT_ID = localStorage.getItem("ig_ext_id") || "";
+
+      await new Promise<void>((resolve, reject) => {
+        const enviar = (id: string) => {
+          chrome.runtime.sendMessage(
+            id,
+            { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64, legenda },
+            (res: { ok: boolean } | undefined) => {
+              if (chrome.runtime.lastError || !res?.ok) {
+                reject(new Error(chrome.runtime.lastError?.message || "Extensão não respondeu"));
+              } else {
+                resolve();
+              }
+            }
+          );
+        };
+        if (EXT_ID) {
+          enviar(EXT_ID);
+        } else {
+          reject(new Error("ID da extensão não configurado. Veja as instruções abaixo."));
+        }
+      });
+
+      alert("✅ Publicação iniciada! O Instagram vai abrir em duas abas (feed + stories).");
+      await marcarPostado(c);
+
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro desconhecido";
+      alert("❌ " + msg);
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   if (loading) return (
@@ -925,6 +1060,23 @@ function HomeContent() {
                       {downloadingId === c.id + cardFormato ? "Gerando..." : "Baixar PNG"}
                     </button>
                     <Btn color="#00C896" onClick={() => copyLegenda(c)}>{copied === c.id ? "✓ Copiado!" : "Legenda"}</Btn>
+                    <button
+                      onClick={() => publicarInstagram(c)}
+                      disabled={downloadingId === c.id + "ig"}
+                      title="Publica feed + stories via extensão do Chrome"
+                      style={{
+                        background: downloadingId === c.id + "ig"
+                          ? "rgba(225,48,108,.1)"
+                          : "linear-gradient(135deg,#E1306C,#C13584)",
+                        color: downloadingId === c.id + "ig" ? "#E1306C" : "#fff",
+                        border: "none", borderRadius: 9, padding: "8px 14px",
+                        cursor: downloadingId === c.id + "ig" ? "not-allowed" : "pointer",
+                        fontSize: 11, fontWeight: 700,
+                        opacity: downloadingId === c.id + "ig" ? .6 : 1,
+                      }}
+                    >
+                      {downloadingId === c.id + "ig" ? "Publicando..." : "📲 Publicar"}
+                    </button>
                     <Btn color="#FFB800" onClick={() => marcarPostado(c)} disabled={jaPostado(c.id)}>
                       {jaPostado(c.id) ? "Postado" : "Marcar"}
                     </Btn>
