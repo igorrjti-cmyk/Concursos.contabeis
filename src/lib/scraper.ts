@@ -50,6 +50,13 @@ const VAGAS_URLS = [
   "/vagas/auditor-fiscal",
   "/vagas/fiscal-de-tributos",
   "/vagas/contador-municipal",
+  // Concursos com inscrições encerradas mas prova ainda não realizada
+  "/concursos/contador",
+  "/concursos/contadora",
+  "/concursos/contabilidade",
+  "/concursos/tecnico-em-contabilidade",
+  "/concursos/analista-contabil",
+  "/concursos/auditor-fiscal",
 ];
 
 
