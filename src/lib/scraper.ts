@@ -976,7 +976,10 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     try {
       const items = await scrapeListagem(url);
       for (const item of items) {
-        if (item.status === "Encerrado") continue;
+        // Descarta só se encerrado E sem chance de ter prova futura.
+        // Concursos recentemente encerrados (diasRestantes >= -60) passam para
+        // scrapeDetalhe verificar se há data de prova futura → "Aguardando Prova"
+        if (item.status === "Encerrado" && (item.diasRestantes ?? -999) < -60) continue;
         const key = item.id || slugify((item.cargo || "") + (item.orgao || ""));
         if (!seen.has(key) && item.orgao && item.orgao !== "-") {
           seen.add(key);
@@ -1024,9 +1027,10 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
 
     // ── Filtro de ano rápido (antes de fazer o scrapeDetalhe) ─────────────
     // Usa datas já disponíveis na listagem para descartar antigos sem HTTP extra
-    // Concursos "Previsto" vindos de /concursos/ podem não ter data de inscrição — não descarta
+    // Não aplica para "Previsto" ou "Encerrado" recente — podem ter prova futura sem data de inscrição
     const inscricaoCheck = item.inscricao || item.inscricaoAte || "";
-    if (item.status !== "Previsto" && inscricaoCheck && inscricaoCheck !== "Ver edital") {
+    const statusPassavel = item.status === "Previsto" || item.status === "Encerrado";
+    if (!statusPassavel && inscricaoCheck && inscricaoCheck !== "Ver edital") {
       const anosRapidos = (inscricaoCheck.match(/\d{4}/g) || []).map(Number).filter(a => a > 2000);
       if (anosRapidos.length > 0 && Math.max(...anosRapidos) < new Date().getFullYear()) {
         continue; // inscrição muito antiga — descarta sem nem acessar a notícia
