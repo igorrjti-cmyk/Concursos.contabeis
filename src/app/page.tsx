@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import InstagramCard from "@/components/InstagramCard";
 import { gerarLegenda } from "@/lib/legenda";
@@ -173,7 +173,7 @@ function ConfirmModal({ mensagem, onConfirm, onCancel }: { mensagem: string; onC
   );
 }
 
-export default function Home() {
+function HomeContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
 
@@ -1230,5 +1230,19 @@ export default function Home() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: "100vh", background: "#060E20", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'Sora',sans-serif", gap: 16 }}>
+        <div style={{ width: 44, height: 44, border: "3px solid rgba(0,200,150,.15)", borderTop: "3px solid #00C896", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
+        <div style={{ color: "rgba(255,255,255,.35)", fontSize: 13 }}>Carregando...</div>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }
