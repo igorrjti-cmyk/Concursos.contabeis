@@ -424,62 +424,6 @@ function HomeContent() {
     }
   };
 
-  // Gera feed + stories de uma vez e baixa como ZIP
-  const downloadAmbos = async (c: Concurso) => {
-    setDownloadingId(c.id + "ambos");
-    try {
-      const h2c    = (await import("html2canvas")).default;
-      const JSZip  = (await import("jszip")).default;
-      await document.fonts.ready;
-
-      const blobs: { nome: string; blob: Blob }[] = [];
-
-      for (const fmt of ["feed", "stories"] as CardFormato[]) {
-        // O card de stories pode não estar renderizado se o formato atual for "feed"
-        // Renderizamos temporariamente o card invisível se necessário
-        let el = document.getElementById("card-" + c.id + "-" + fmt);
-        let elTemp: HTMLDivElement | null = null;
-
-        if (!el) {
-          // Cria um container temporário fora da tela para renderizar o formato ausente
-          elTemp = document.createElement("div");
-          elTemp.style.cssText = "position:fixed;left:-9999px;top:0;";
-          document.body.appendChild(elTemp);
-
-          const { createRoot } = await import("react-dom/client");
-          const React = await import("react");
-          const { default: InstagramCard } = await import("@/components/InstagramCard");
-          const root = createRoot(elTemp);
-          root.render(React.createElement(InstagramCard, { concurso: c, formato: fmt }));
-          await new Promise(r => setTimeout(r, 300)); // aguarda render
-          el = elTemp.firstElementChild as HTMLElement;
-        }
-
-        if (!el) continue;
-        const canvas = await h2c(el, { scale: 3, backgroundColor: null, useCORS: true });
-        const blob   = await new Promise<Blob>(res =>
-          canvas.toBlob(b => res(b!), "image/png")
-        );
-        blobs.push({ nome: `${c.id}-${fmt}.png`, blob });
-
-        if (elTemp) document.body.removeChild(elTemp);
-      }
-
-      // Empacota em ZIP
-      const zip = new JSZip();
-      for (const { nome, blob } of blobs) zip.file(nome, blob);
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-
-      const a = document.createElement("a");
-      a.download = `${c.id}-instagram.zip`;
-      a.href = URL.createObjectURL(zipBlob);
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    } finally {
-      setDownloadingId(null);
-    }
-  };
-
   const jaPostado = (id: string) => {
     const hoje = new Date().toDateString();
     return historico.some(h => h.concurso_id === id && new Date(h.posted_at).toDateString() === hoje);
