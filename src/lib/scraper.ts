@@ -716,21 +716,7 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     if (!texto || texto.length < 4 || texto.length > 80) return;
     if (texto === title) return;
 
-    // ── Descarta notícias antigas ─────────────────────────────────────────────
-    // IDs do PCI: 2025+ >= 1.650.000 | 2024 >= 1.550.000 | 2023 >= 1.400.000
-    // Concursos válidos (2024+) têm ID >= 1.400.000
-    const idMatch = href.match(/\/(\d{6,7})\//);
-    if (idMatch) {
-      const idNoticia = parseInt(idMatch[1]);
-      if (idNoticia < 1_400_000) return; // notícia antiga (antes de 2023)
-    }
-    // URLs sem ID numérico de 6-7 dígitos = formato antigo pré-2018 = descarta
-    // Ex: /noticias/oportunidade-para-tecnico-contabil-na-camara-de-sao-lourenco-do-sul-rs
-    else if (!href.match(/\/\d{6,7}\//)) {
-      // Só descarta se for slug puro sem nenhum número de 6+ dígitos
-      const temIdNaUrl = href.match(/\d{6,7}/);
-      if (!temIdNaUrl) return;
-    }
+
 
     // ── Aceita apenas CONCURSO PÚBLICO — descarta processo seletivo ──────────
     const titleLow = title.toLowerCase();
