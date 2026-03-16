@@ -412,9 +412,11 @@ function HomeContent() {
       const h2c = (await import("html2canvas")).default;
       const el  = document.getElementById("card-" + c.id + "-" + fmt);
       if (!el) return;
-      // Garante que fontes (Sora) estejam totalmente carregadas antes de capturar
       await document.fonts.ready;
-      const canvas = await h2c(el, { scale: 3, backgroundColor: null, useCORS: true });
+      // Feed 4:5: scale 2.25 → 480×600px × 2.25 = 1080×1350px real
+      // Stories:  scale 4   → 270×480px × 4    = 1080×1920px real
+      const scale = fmt === "feed" ? 2.25 : 4;
+      const canvas = await h2c(el, { scale, backgroundColor: null, useCORS: true });
       const a = document.createElement("a");
       a.download = c.id + "-" + fmt + ".png";
       a.href = canvas.toDataURL("image/png");
@@ -429,57 +431,34 @@ function HomeContent() {
     return historico.some(h => h.concurso_id === id && new Date(h.posted_at).toDateString() === hoje);
   };
 
-  // Envia feed + stories para a extensão do Chrome publicar no Instagram
+  // Envia só o feed para a extensão publicar no Instagram
+  // Stories não funciona via web — disponível apenas para download manual
   const publicarInstagram = async (c: Concurso) => {
     setDownloadingId(c.id + "ig");
     try {
       const h2c = (await import("html2canvas")).default;
       await document.fonts.ready;
 
-      // Gera feed
+      // Gera feed 4:5 — scale 2.25 → 1080×1350px real
       const elFeed = document.getElementById("card-" + c.id + "-feed");
       if (!elFeed) throw new Error("Card feed não encontrado. Vá para a aba Cards primeiro.");
-      const canvasFeed   = await h2c(elFeed,   { scale: 3, backgroundColor: null, useCORS: true });
-      const feedBase64   = canvasFeed.toDataURL("image/png");
-
-      // Gera stories — renderiza em container temporário se não estiver visível
-      let elStories = document.getElementById("card-" + c.id + "-stories");
-      let tempDiv: HTMLDivElement | null = null;
-
-      if (!elStories) {
-        tempDiv = document.createElement("div");
-        tempDiv.style.cssText = "position:fixed;left:-9999px;top:0;";
-        document.body.appendChild(tempDiv);
-        const { createRoot }        = await import("react-dom/client");
-        const React                 = await import("react");
-        const { default: IGCard }   = await import("@/components/InstagramCard");
-        const root = createRoot(tempDiv);
-        root.render(React.createElement(IGCard, { concurso: c, formato: "stories" }));
-        await new Promise(r => setTimeout(r, 400));
-        elStories = tempDiv.firstElementChild as HTMLElement;
-      }
-
-      const canvasStories  = await h2c(elStories, { scale: 3, backgroundColor: null, useCORS: true });
-      const storiesBase64  = canvasStories.toDataURL("image/png");
-      if (tempDiv) document.body.removeChild(tempDiv);
+      const canvasFeed = await h2c(elFeed, { scale: 2.25, backgroundColor: null, useCORS: true });
+      const feedBase64 = canvasFeed.toDataURL("image/png");
 
       const legenda = gerarLegenda(c);
 
-      // Tenta enviar para a extensão via chrome.runtime
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const chrome = (window as any).chrome;
       if (!chrome?.runtime?.sendMessage) {
         throw new Error("Extensão não encontrada. Instale a extensão Concursos Contábeis no Chrome.");
       }
 
-      // O ID da extensão precisa estar no manifest como "externally_connectable"
-      // Em dev usa "*" — em produção substitua pelo ID real da extensão instalada
       const EXT_ID = "phmnhackebfpjcjpdopobdalmaolbglk";
 
       await new Promise<void>((resolve, reject) => {
         chrome.runtime.sendMessage(
           EXT_ID,
-          { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64, legenda },
+          { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64: null, legenda },
           (res: { ok: boolean } | undefined) => {
             if (chrome.runtime.lastError || !res?.ok) {
               reject(new Error(chrome.runtime.lastError?.message || "Extensão não encontrada. Verifique se está instalada e ativa no Chrome."));
@@ -490,7 +469,7 @@ function HomeContent() {
         );
       });
 
-      alert("✅ Publicação iniciada! O Instagram vai abrir em duas abas (feed + stories).");
+      alert("✅ Publicação iniciada! O Instagram vai abrir para o feed.");
       await marcarPostado(c);
 
     } catch (e) {
@@ -745,14 +724,17 @@ function HomeContent() {
           {/* Formato dos cards */}
           {tab === "cards" && (
             <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
-              {(["feed", "stories"] as CardFormato[]).map(f => (
+              {([
+                ["feed",    "Feed 4:5 (1080×1350)"],
+                ["stories", "Stories 9:16 (download)"],
+              ] as [CardFormato, string][]).map(([f, label]) => (
                 <button key={f} onClick={() => setCardFormato(f)} style={{
                   background: cardFormato === f ? "rgba(0,200,150,.12)" : "transparent",
                   border: "1px solid " + (cardFormato === f ? "#00C896" : "rgba(255,255,255,.1)"),
                   color: cardFormato === f ? "#00C896" : "rgba(255,255,255,.35)",
                   borderRadius: 8, padding: "5px 11px", fontSize: 11, fontWeight: 700, cursor: "pointer",
                 }}>
-                  {f === "feed" ? "Feed 1:1" : "Stories 9:16"}
+                  {label}
                 </button>
               ))}
             </div>
@@ -976,7 +958,9 @@ function HomeContent() {
         {tab === "cards" && (
           <div>
             <p style={{ color: "rgba(255,255,255,.25)", fontSize: 11, marginBottom: 20 }}>
-              {cardFormato === "feed" ? "Feed 1:1 — ideal para o feed do Instagram" : "Stories 9:16 — arraste para cima no Instagram Stories"}
+            {cardFormato === "feed"
+              ? "Feed 4:5 — 1080×1350px — proporção padrão do Instagram (área visível na grade: 1012×1350px)"
+              : "Stories 9:16 — 1080×1920px — somente para download manual (não publicável via web)"}
               {" — Clique em Baixar PNG para salvar."}
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 28 }} className="cards-wrap">
@@ -1000,7 +984,7 @@ function HomeContent() {
                     <button
                       onClick={() => publicarInstagram(c)}
                       disabled={downloadingId === c.id + "ig"}
-                      title="Publica feed + stories via extensão do Chrome"
+                      title="Publica o feed (4:5) via extensão do Chrome — Stories somente manual pelo celular"
                       style={{
                         background: downloadingId === c.id + "ig"
                           ? "rgba(225,48,108,.1)"
