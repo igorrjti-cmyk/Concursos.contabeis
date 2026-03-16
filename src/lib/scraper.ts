@@ -170,10 +170,12 @@ const DOMINIO_BANCA: Record<string, string> = {
 // Nível 1 — palavra-chave direta no nome do cargo
 const CARGO_CONTABIL_KW = [
   "contador", "contadora", "contábil", "contabilidade", "contab",
-  // Auditores — qualquer tipo
-  "auditor fiscal", "auditor-fiscal", "auditor interno", "auditor externo",
-  "auditor público", "auditor de controle", "auditor municipal",
-  "auditor estadual", "auditor federal", "auditor",
+  // Auditores FISCAIS/TRIBUTÁRIOS — diretos (sempre contábeis)
+  "auditor fiscal", "auditor-fiscal",
+  "auditor de tributos", "auditor tributário", "auditor tributario",
+  "auditor de controle interno",
+  "auditor municipal", "auditor estadual", "auditor federal",
+  // Auditores genéricos só passam pelo fluxo de detalhe (verificação de CRC/Contábeis no PDF)
   // Fiscais tributários
   "fiscal tribut", "fiscal de tribut", "fiscal contábil",
   "fiscal de rendas", "fiscal de receitas", "agente fiscal",
@@ -185,26 +187,23 @@ const CARGO_CONTABIL_KW = [
   "técnico contábil", "tecnico contabil",
 ];
 
-// Nível 2 — cargos genéricos que PODEM ser contábeis se o requisito for CRC/Contábeis
+// Nível 2 — cargos genéricos que SÓ entram se o PDF exigir CRC/Ciências Contábeis
+// Removidos: "especialista", "assessor", "servidor", "agente administrativo" (genéricos demais)
 const CARGO_GENERICO_CONTABIL_KW = [
-  // Legislativo
+  // Legislativo com área contábil
   "analista legislativo", "técnico legislativo", "tecnico legislativo",
-  // Administrativo / gestão
+  // Analistas de áreas financeiras/contábeis
   "analista administrativo", "analista de gestão", "analista de gestao",
-  "analista de controle", "analista de planejamento", "analista de finanças",
-  "analista de financas", "analista de orçamento", "analista de orcamento",
+  "analista de controle", "analista de finanças", "analista de financas",
+  "analista de orçamento", "analista de orcamento",
   "analista de tributos", "analista tributário", "analista tributario",
   "analista de fiscalização", "analista de fiscalizacao",
-  "analista de gestão pública", "analista de políticas públicas",
-  // Especialistas / assessores
-  "especialista", "assessor", "assessor técnico", "assessor contábil",
-  // Técnicos de nível superior
+  // Técnicos de nível superior com área definida
   "técnico de nível superior", "tecnico de nivel superior",
-  "técnico superior", "agente administrativo",
-  "agente de fiscalização", "agente de fiscalizacao",
-  // Outros genéricos comuns em editais
   "profissional de nível superior", "profissional de nivel superior",
-  "servidor", "cargo de nível superior",
+  "agente de fiscalização", "agente de fiscalizacao",
+  // Auditores genéricos — só aceitos se PDF exigir CRC/Ciências Contábeis
+  "auditor interno", "auditor externo", "auditor público", "auditor publico", "auditor",
 ];
 
 // Palavras que indicam requisito de contabilidade no texto do edital / PDF
@@ -883,6 +882,8 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     // Se claramente não é contábil → rejeita
     const nivelSuperior = nivelRaw.toLowerCase().includes("superior");
     const cargoGenerico = CARGO_GENERICO_CONTABIL_KW.some(kw => cargo.toLowerCase().includes(kw));
+    // Genérico + nível superior → passa para scrapeDetalhe confirmar via PDF (CRC/Contábeis)
+    // Genérico + nível médio/técnico → rejeita imediatamente (sem CRC não é contábil)
     const passaParaDetalhe = nivelSuperior && cargoGenerico;
     if (!ehConcursoContabil(cargo, title, orgao) && !passaParaDetalhe) continue;
 
@@ -1079,15 +1080,40 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     // Descarta se o texto da notícia indica processo seletivo
     if (det.ehProcessoSeletivo) continue;
 
-    // Segunda chance no filtro: "Vários Cargos" com cargosContabeis no edital = válido
-    // Sem cargos contábeis encontrados E cargo genérico = pula
+    // Segunda chance no filtro usando texto completo do edital (PDF já lido)
     const cargoFinal = item.cargo || "-";
+    const textoCompleto = det.requisito + " " + det.cargosContabeis.join(" ");
+
+    // Caso 1: "Vários Cargos" — precisa ter cargos contábeis identificados no PDF
     if (
       cargoFinal === "Vários Cargos" &&
       det.cargosContabeis.length === 0 &&
       !ehConcursoContabil(cargoFinal, item.linkNoticia || "", item.orgao || "", "")
     ) {
       continue;
+    }
+
+    // Caso 2: cargo genérico (nível 2) que passou para detalhe — agora exige confirmação do PDF
+    // Se o cargo não tem palavra-chave direta E o PDF não menciona CRC/Contábeis → rejeita
+    const cargoLow = cargoFinal.toLowerCase();
+    const ehCargoDirecto = CARGO_CONTABIL_KW.some(kw => cargoLow.includes(kw));
+    const ehCargoGenerico = !ehCargoDirecto && CARGO_GENERICO_CONTABIL_KW.some(kw => cargoLow.includes(kw));
+    if (ehCargoGenerico) {
+      const reqLow = (det.requisito || "").toLowerCase();
+      // Aceita se PDF confirma Ciências Contábeis/CRC OU nível superior (qualquer graduação)
+      const pdfConfirmaContabil = REQUISITO_CONTABIL_KW.some(kw =>
+        textoCompleto.toLowerCase().includes(kw) || reqLow.includes(kw)
+      );
+      const pdfConfirmaSuperior =
+        reqLow.includes("nível superior") ||
+        reqLow.includes("nivel superior") ||
+        reqLow.includes("graduação") ||
+        reqLow.includes("graduacao") ||
+        reqLow.includes("bacharel") ||
+        reqLow.includes("superior");
+      if (!pdfConfirmaContabil && !pdfConfirmaSuperior && det.cargosContabeis.length === 0) {
+        continue; // genérico sem nível superior confirmado no PDF — descarta
+      }
     }
 
     // Filtra só a parte contábil do cargo (ex: "Contador e Agente Legislativo" → "Contador")
