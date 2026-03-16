@@ -868,8 +868,22 @@ async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
     });
   }
 
+  // ── Verifica data de publicação da notícia ───────────────────────────────
+  // O PCI exibe a data no formato "Sexta-feira, 2 de dezembro de 2011"
+  // Notícias com mais de 2 anos são descartadas
+  const bodyText = $("body").text();
+  const anoAtualCheck = new Date().getFullYear();
+  const dataNoticiaMatch = bodyText.match(/(?:segunda|terça|quarta|quinta|sexta|sábado|domingo|segunda-feira|terça-feira|quarta-feira|quinta-feira|sexta-feira)[-,\s]+\d{1,2}\s+de\s+\w+\s+de\s+(20\d{2})/i);
+  if (dataNoticiaMatch) {
+    const anoNoticia = parseInt(dataNoticiaMatch[1]);
+    if (anoNoticia < anoAtualCheck - 1) {
+      // Notícia muito antiga — retorna vazio para ser descartado
+      return empty;
+    }
+  }
+
   // ── Extrai do HTML da notícia (base) ──────────────────────────────────────
-  const texto = $("body").text();
+  const texto = bodyText;
   const det   = extrairDetalhes(texto);
   if (pdfHref) det.linkEdital = pdfHref;
 
