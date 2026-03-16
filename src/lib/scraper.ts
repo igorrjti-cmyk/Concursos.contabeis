@@ -117,6 +117,7 @@ const DOMINIO_BANCA: Record<string, string> = {
   "fepese.org.br":          "FEPESE",
   "iades.org.br":           "IADES",
   "quadrix.org.br":         "QUADRIX",
+  "institutoquadrix.org.br": "QUADRIX",
   "nucepe.uespi.br":        "NUCEPE",
   "consulplan.com":         "CONSULPLAN",
   "objetiva.org":           "OBJETIVA CONCURSOS",
@@ -169,6 +170,8 @@ const CARGO_CONTABIL_KW = [
   "técnico contábil", "tecnico contabil",
   "agente fiscal", "agente de tributos",
   "inspetor fiscal",
+  "auditor interno",  // CRC-SP, CRC-CE e outros conselhos
+  "analista contabil", // sem acento
 ];
 
 // Nível 2 — cargos genéricos que PODEM ser contábeis se o requisito for CRC/Contábeis

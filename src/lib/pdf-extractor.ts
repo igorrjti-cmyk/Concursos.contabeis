@@ -36,7 +36,7 @@ const BANCAS_PDF = [
   "SOLUÇÃO CONCURSOS", "MAIS CONCURSOS", "OBJETIVA CONCURSOS",
 ];
 
-const BANCAS_AMBIGUAS = new Set(["OBJETIVA CONCURSOS", "ACESSO", "NOVA", "MAIS", "RBO"]);
+const BANCAS_AMBIGUAS = new Set(["OBJETIVA CONCURSOS", "ACESSO", "NOVA", "MAIS", "RBO"]);  // QUADRIX não é ambíguo
 const CTX_BANCA = /\b(?:banca|organiza[cç][aã]o|organizadora|realiza[cç][aã]o|respons[aá]vel|contrat)\b/i;
 
 const KW_CONTABIL = [
@@ -44,6 +44,8 @@ const KW_CONTABIL = [
   "auditor fiscal", "fiscal de tributos",
   "técnico em contabilidade", "tecnico em contabilidade",
   "analista contábil", "analista de contabilidade",
+  "auditor interno",
+  "analista contabil",
 ];
 
 async function baixarPDF(url: string): Promise<ArrayBuffer | null> {
