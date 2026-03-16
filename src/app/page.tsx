@@ -474,27 +474,20 @@ function HomeContent() {
 
       // O ID da extensão precisa estar no manifest como "externally_connectable"
       // Em dev usa "*" — em produção substitua pelo ID real da extensão instalada
-      const EXT_ID = localStorage.getItem("ig_ext_id") || "";
+      const EXT_ID = "phmnhackebfpjcjpdopobdalmaolbglk";
 
       await new Promise<void>((resolve, reject) => {
-        const enviar = (id: string) => {
-          chrome.runtime.sendMessage(
-            id,
-            { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64, legenda },
-            (res: { ok: boolean } | undefined) => {
-              if (chrome.runtime.lastError || !res?.ok) {
-                reject(new Error(chrome.runtime.lastError?.message || "Extensão não respondeu"));
-              } else {
-                resolve();
-              }
+        chrome.runtime.sendMessage(
+          EXT_ID,
+          { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64, legenda },
+          (res: { ok: boolean } | undefined) => {
+            if (chrome.runtime.lastError || !res?.ok) {
+              reject(new Error(chrome.runtime.lastError?.message || "Extensão não encontrada. Verifique se está instalada e ativa no Chrome."));
+            } else {
+              resolve();
             }
-          );
-        };
-        if (EXT_ID) {
-          enviar(EXT_ID);
-        } else {
-          reject(new Error("ID da extensão não configurado. Veja as instruções abaixo."));
-        }
+          }
+        );
       });
 
       alert("✅ Publicação iniciada! O Instagram vai abrir em duas abas (feed + stories).");
