@@ -34,7 +34,7 @@ export default function InstagramCard({
 
   const SAFE_X     = isStories ? 0  : 15;
   const PAD_X      = isStories ? 18 : 28 + SAFE_X;
-  const PAD_TOP    = isStories ? 18 : Math.round(H * 0.12);
+  const PAD_TOP    = isStories ? 18 : Math.round(H * 0.15);
   const PAD_BOTTOM = isStories ? 18 : 18;
 
   const MAX_CARGO    = isStories ? 26 : 36;
@@ -84,7 +84,7 @@ export default function InstagramCard({
         boxSizing: "border-box",
         display: "flex", flexDirection: "column",
         justifyContent: "flex-start",
-        gap: isStories ? 10 : 13,
+        gap: isStories ? 10 : 18,
         paddingTop: PAD_TOP, paddingBottom: PAD_BOTTOM,
         paddingLeft: PAD_X, paddingRight: PAD_X,
         flexShrink: 0,
