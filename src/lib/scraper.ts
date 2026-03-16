@@ -385,25 +385,30 @@ function detectStatus(inscricaoAte: string): Concurso["status"] {
 }
 
 /**
- * Reclassifica "Previsto" para "Aguardando Prova" quando o edital tem
- * data de prova futura. Se prova e resultado já passaram → "Encerrado".
+ * Reclassifica o status levando em conta data de prova e resultado.
+ * - "Inscricoes Abertas" → mantém (inscrições ainda abertas)
+ * - "Encerrado" (inscrições fechadas) + prova futura → "Aguardando Prova"
+ * - "Previsto" + prova futura → "Aguardando Prova"
+ * - Prova e resultado já passaram → "Encerrado"
  */
 function reclassificarStatus(
   status: Concurso["status"],
   dataProva: string,
   dataResultado: string
 ): Concurso["status"] {
-  if (status !== "Previsto" && status !== "Encerrado") return status;
-  if (status === "Encerrado") return "Encerrado";
+  // Inscrições abertas: mantém como está
+  if (status === "Inscricoes Abertas") return status;
 
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
+  // Verifica se há prova futura
   if (dataProva && dataProva !== "-") {
     const [d, m, y] = dataProva.split("/").map(Number);
     if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
       const dp = new Date(y, m - 1, d);
       if (dp >= hoje) return "Aguardando Prova";
+      // Prova já passou — verifica resultado
       if (dataResultado && dataResultado !== "-") {
         const [dr, mr, yr] = dataResultado.split("/").map(Number);
         if (!isNaN(dr) && !isNaN(mr) && !isNaN(yr)) {
@@ -415,6 +420,7 @@ function reclassificarStatus(
     }
   }
 
+  // Sem data de prova — verifica só resultado
   if (dataResultado && dataResultado !== "-") {
     const [dr, mr, yr] = dataResultado.split("/").map(Number);
     if (!isNaN(dr) && !isNaN(mr) && !isNaN(yr)) {
@@ -423,7 +429,8 @@ function reclassificarStatus(
     }
   }
 
-  return "Previsto";
+  // Sem datas futuras: mantém o status original (Previsto ou Encerrado)
+  return status;
 }
 
 // ─── Filtro contábil robusto ──────────────────────────────────────────────────
