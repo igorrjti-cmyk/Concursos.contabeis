@@ -228,40 +228,30 @@ export default function InstagramCard({
         </div>
       </div>
 
-      {/* ── BLOCO MEIO: Data da prova ── */}
+      {/* ── BLOCO MEIO: Data da prova — destaque total ── */}
       {temProva && (
         <div style={{
-          background: "linear-gradient(135deg,rgba(167,139,250,0.15),rgba(99,60,220,0.10))",
-          border: `1px solid ${isStories ? "rgba(167,139,250,0.3)" : "rgba(167,139,250,0.38)"}`,
-          borderRadius: 11, padding: isStories ? "7px 11px" : "12px 16px",
-          display: "flex", alignItems: "center", gap: isStories ? 9 : 13,
+          background: "linear-gradient(135deg,rgba(167,139,250,0.20),rgba(99,60,220,0.14))",
+          border: "1.5px solid rgba(167,139,250,0.5)",
+          borderRadius: 12,
+          padding: isStories ? "10px 14px" : "14px 20px",
+          display: "flex", alignItems: "center", gap: isStories ? 10 : 16,
+          boxShadow: "0 4px 24px rgba(139,92,246,0.2)",
         }}>
-          <span style={{ fontSize: isStories ? 15 : 22, flexShrink: 0 }}>📝</span>
+          <span style={{ fontSize: isStories ? 18 : 28, flexShrink: 0 }}>📝</span>
           <div style={{ flex: 1 }}>
             <div style={{
-              color: "rgba(167,139,250,0.75)",
-              fontSize: provaLabelSize, fontWeight: 700,
-              letterSpacing: 1.1, textTransform: "uppercase", marginBottom: 3,
+              color: "rgba(196,181,253,0.7)",
+              fontSize: isStories ? 7.5 : 9, fontWeight: 700,
+              letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 4,
             }}>Data da Prova</div>
             <div style={{
-              color: "#C4B5FD",
-              fontSize: provaValueSize, fontWeight: 800,
-              letterSpacing: "-0.4px", lineHeight: 1,
+              color: "#E9D5FF",
+              fontSize: isStories ? 18 : 28, fontWeight: 900,
+              letterSpacing: "-0.5px", lineHeight: 1,
+              textShadow: "0 0 20px rgba(167,139,250,0.5)",
             }}>{c.dataProva}</div>
           </div>
-          {temRes && (
-            <div style={{ textAlign: "right" }}>
-              <div style={{
-                color: "rgba(167,139,250,0.65)",
-                fontSize: provaLabelSize, fontWeight: 700,
-                letterSpacing: 1.1, textTransform: "uppercase", marginBottom: 3,
-              }}>Resultado</div>
-              <div style={{
-                color: "#C4B5FD",
-                fontSize: resValueSize, fontWeight: 700, lineHeight: 1,
-              }}>{c.dataResultado}</div>
-            </div>
-          )}
         </div>
       )}
 

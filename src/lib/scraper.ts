@@ -659,9 +659,15 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
     /homologa[^.]{0,60}?(\d{2}\/\d{2}\/\d{4})/i,
     /(\d{2}\/\d{2}\/\d{4})[^.]{0,30}?(?:resultado|gabarito|homologa)/i,
   ];
+  // Helper: converte dd/mm/yyyy em timestamp para comparar datas
+  const toTs = (d: string) => { const [dd,mm,yy] = d.split("/").map(Number); return new Date(yy,mm-1,dd).getTime(); };
   for (const re of resRe) {
     const m = textoNorm.match(re);
-    if (m?.[1] && m[1] !== out.dataProva) { out.dataResultado = m[1]; break; }
+    if (!m?.[1] || m[1] === out.dataProva) continue;
+    // Só aceita se não houver data de prova, ou se resultado for POSTERIOR à prova
+    if (out.dataProva && out.dataProva !== "-" && toTs(m[1]) <= toTs(out.dataProva)) continue;
+    out.dataResultado = m[1];
+    break;
   }
 
   // Banca — múltiplas estratégias de detecção
