@@ -50,7 +50,10 @@ const VAGAS_URLS = [
   "/vagas/auditor-fiscal",
   "/vagas/fiscal-de-tributos",
   "/vagas/contador-municipal",
-  // Concursos com inscrições encerradas mas prova ainda não realizada
+];
+
+// URLs de concursos em andamento (inscrições encerradas, aguardando prova)
+const CONCURSOS_URLS = [
   "/concursos/contador",
   "/concursos/contadora",
   "/concursos/contabilidade",
@@ -989,6 +992,26 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     }
   }
 
+  // ── 2. Concursos em andamento (inscrições encerradas, aguardando prova) ───
+  // Não filtra por status "Encerrado" pois as inscrições já fecharam —
+  // o reclassificarStatus vai promovê-los para "Aguardando Prova" se a prova for futura
+  for (const url of CONCURSOS_URLS) {
+    try {
+      const items = await scrapeListagem(url);
+      for (const item of items) {
+        const key = item.id || slugify((item.cargo || "") + (item.orgao || ""));
+        if (!seen.has(key) && item.orgao && item.orgao !== "-") {
+          seen.add(key);
+          // Marca como "Previsto" para que reclassificarStatus possa promover
+          // para "Aguardando Prova" quando encontrar data de prova futura
+          brutos.push({ ...item, id: key, status: "Previsto" });
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
 
   if (brutos.length === 0) return getFallbackData();
 
@@ -1005,10 +1028,13 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
 
     // ── Filtro de ano rápido (antes de fazer o scrapeDetalhe) ─────────────
     // Usa datas já disponíveis na listagem para descartar antigos sem HTTP extra
+    // Concursos "Previsto" vindos de /concursos/ podem não ter data de inscrição — não descarta
     const inscricaoCheck = item.inscricao || item.inscricaoAte || "";
-    const anosRapidos = (inscricaoCheck.match(/\d{4}/g) || []).map(Number).filter(a => a > 2000);
-    if (anosRapidos.length > 0 && Math.max(...anosRapidos) < new Date().getFullYear()) {
-      continue; // inscrição muito antiga — descarta sem nem acessar a notícia
+    if (item.status !== "Previsto" && inscricaoCheck && inscricaoCheck !== "Ver edital") {
+      const anosRapidos = (inscricaoCheck.match(/\d{4}/g) || []).map(Number).filter(a => a > 2000);
+      if (anosRapidos.length > 0 && Math.max(...anosRapidos) < new Date().getFullYear()) {
+        continue; // inscrição muito antiga — descarta sem nem acessar a notícia
+      }
     }
 
     if (i < LIMITE_DETALHE && item.linkNoticia) {
