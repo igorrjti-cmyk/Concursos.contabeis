@@ -1,10 +1,21 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import InstagramCard from "@/components/InstagramCard";
 import { gerarLegenda } from "@/lib/legenda";
 import type { Concurso } from "@/lib/scraper";
 import type { PostHistorico } from "@/app/api/historico/route";
+
+// Hook utilitário: retarda a atualização de um valor até o usuário parar de digitar
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debouncedValue;
+}
 
 type FilterStatus = "todos" | "Inscricoes Abertas" | "Aguardando Prova";
 type TabType = "lista" | "cards" | "historico" | "favoritos" | "stats" | "calendario";
@@ -163,20 +174,30 @@ function ConfirmModal({ mensagem, onConfirm, onCancel }: { mensagem: string; onC
 }
 
 export default function Home() {
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+
   const [concursos, setConcursos]       = useState<Concurso[]>([]);
   const [historico, setHistorico]       = useState<PostHistorico[]>([]);
   const [loading, setLoading]           = useState(true);
   const [refreshing, setRefreshing]     = useState(false);
-  const [filter, setFilter]             = useState<FilterStatus>("todos");
-  const [estadoFiltro, setEstadoFiltro] = useState("Todos");
-  const [nivelFiltro, setNivelFiltro]   = useState("Todos");
-  const [sortBy, setSortBy]             = useState<SortBy>("padrao");
-  const [salarioMin, setSalarioMin]     = useState(0);
+  const [filter, setFilter]             = useState<FilterStatus>(
+    (searchParams.get("status") as FilterStatus) ?? "todos"
+  );
+  const [estadoFiltro, setEstadoFiltro] = useState(searchParams.get("estado") ?? "Todos");
+  const [nivelFiltro, setNivelFiltro]   = useState(searchParams.get("nivel")  ?? "Todos");
+  const [sortBy, setSortBy]             = useState<SortBy>(
+    (searchParams.get("sort") as SortBy) ?? "padrao"
+  );
+  const [salarioMin, setSalarioMin]     = useState(Number(searchParams.get("salario") ?? 0));
   const [favoritos, setFavoritos]       = useState<Favorito[]>([]);
   const [stats, setStats]               = useState<StatsData | null>(null);
   const [favoritando, setFavoritando]   = useState<string | null>(null);
-  const [busca, setBusca]               = useState("");
-  const [tab, setTab]                   = useState<TabType>("lista");
+  const [busca, setBusca]               = useState(searchParams.get("q") ?? "");
+  const buscaDebounced                  = useDebounce(busca, 250);
+  const [tab, setTab]                   = useState<TabType>(
+    (searchParams.get("tab") as TabType) ?? "lista"
+  );
   const [expanded, setExpanded]         = useState<string | null>(null);
   const [copied, setCopied]             = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -186,6 +207,21 @@ export default function Home() {
   const [confirmModal, setConfirmModal] = useState<{ mensagem: string; onConfirm: () => void } | null>(null);
   const [clearing, setClearing]         = useState(false);
   const [debugging, setDebugging]       = useState(false);
+  const [erro, setErro]                 = useState<string | null>(null);
+
+  // Sincroniza filtros na URL sempre que mudam
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (tab !== "lista")       params.set("tab",     tab);
+    if (filter !== "todos")    params.set("status",  filter);
+    if (estadoFiltro !== "Todos") params.set("estado", estadoFiltro);
+    if (nivelFiltro !== "Todos")  params.set("nivel",  nivelFiltro);
+    if (sortBy !== "padrao")   params.set("sort",    sortBy);
+    if (salarioMin > 0)        params.set("salario", String(salarioMin));
+    if (buscaDebounced.trim()) params.set("q",       buscaDebounced.trim());
+    const query = params.toString();
+    router.replace(query ? "?" + query : "/", { scroll: false });
+  }, [tab, filter, estadoFiltro, nivelFiltro, sortBy, salarioMin, buscaDebounced, router]);
 
   const confirmar = (mensagem: string): Promise<boolean> =>
     new Promise(resolve => {
@@ -240,6 +276,7 @@ export default function Home() {
 
   const fetchConcursos = useCallback(async (forceRefresh = false) => {
     forceRefresh ? setRefreshing(true) : setLoading(true);
+    setErro(null);
     try {
       const res  = await fetch("/api/concursos" + (forceRefresh ? "?refresh=1" : ""));
       const data = await res.json();
@@ -254,9 +291,12 @@ export default function Home() {
         console.log("Por status:", porStatus);
         console.table(c.slice(0, 15).map(x => ({ cargo: x.cargo, orgao: x.orgao, estado: x.estado, status: x.status, dias: x.diasRestantes, salario: x.salario })));
         console.groupEnd();
+      } else {
+        setErro("Não foi possível carregar os concursos. Tente novamente.");
       }
     } catch (e) {
       console.error("Erro ao carregar concursos:", e);
+      setErro("Falha na conexão com o servidor. Verifique sua internet e tente novamente.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -320,8 +360,8 @@ export default function Home() {
       if (filter !== "todos" && c.status !== filter) return false;
       if (estadoFiltro !== "Todos" && c.estado !== estadoFiltro) return false;
       if (nivelFiltro !== "Todos" && !c.nivel.includes(nivelFiltro.replace("Todos", ""))) return false;
-      if (busca.trim()) {
-        const q = busca.toLowerCase();
+      if (buscaDebounced.trim()) {
+        const q = buscaDebounced.toLowerCase();
         if (!c.cargo.toLowerCase().includes(q) && !c.orgao.toLowerCase().includes(q) && !c.estado.toLowerCase().includes(q)) return false;
       }
       return true;
@@ -372,6 +412,8 @@ export default function Home() {
       const h2c = (await import("html2canvas")).default;
       const el  = document.getElementById("card-" + c.id + "-" + fmt);
       if (!el) return;
+      // Garante que fontes (Sora) estejam totalmente carregadas antes de capturar
+      await document.fonts.ready;
       const canvas = await h2c(el, { scale: 3, backgroundColor: null, useCORS: true });
       const a = document.createElement("a");
       a.download = c.id + "-" + fmt + ".png";
@@ -398,6 +440,31 @@ export default function Home() {
   return (
     <div style={{ minHeight: "100vh", background: "#060E20", fontFamily: "'Sora',sans-serif", color: "#fff" }}>
       {confirmModal && <ConfirmModal mensagem={confirmModal.mensagem} onConfirm={confirmModal.onConfirm} onCancel={() => setConfirmModal(null)} />}
+
+      {/* ── Banner de erro ── */}
+      {erro && (
+        <div style={{
+          background: "rgba(255,75,75,.08)", border: "1px solid rgba(255,75,75,.25)",
+          borderRadius: 12, margin: "16px 20px 0",
+          padding: "14px 18px", display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <span style={{ fontSize: 20 }}>⚠️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: "#FF4B4B", fontWeight: 700, fontSize: 13 }}>Erro ao carregar</div>
+            <div style={{ color: "rgba(255,255,255,.5)", fontSize: 12, marginTop: 2 }}>{erro}</div>
+          </div>
+          <button
+            onClick={() => fetchConcursos(true)}
+            style={{
+              background: "rgba(255,75,75,.15)", border: "1px solid rgba(255,75,75,.3)",
+              color: "#FF4B4B", borderRadius: 9, padding: "8px 16px",
+              cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
+            }}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
 
       <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800;900&display=swap" rel="stylesheet" />
       <style>{`
@@ -453,24 +520,28 @@ export default function Home() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button onClick={runDebug} disabled={debugging} title="Logs no console F12" style={{
-            background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.2)",
-            color: "#A78BFA", borderRadius: 10, padding: "8px 13px",
-            fontSize: 11, fontWeight: 700, cursor: debugging ? "not-allowed" : "pointer",
-            display: "flex", alignItems: "center", gap: 5, opacity: debugging ? .6 : 1,
-          }}>
-            <span style={{ display: "inline-block", animation: debugging ? "spin .8s linear infinite" : "none" }}>🔍</span>
-            {debugging ? "Analisando..." : "Debug F12"}
-          </button>
-          <button onClick={clearCache} disabled={clearing} style={{
-            background: "rgba(255,75,75,.1)", border: "1px solid rgba(255,75,75,.2)",
-            color: "#FF4B4B", borderRadius: 10, padding: "8px 13px",
-            fontSize: 11, fontWeight: 700, cursor: clearing ? "not-allowed" : "pointer",
-            display: "flex", alignItems: "center", gap: 5, opacity: clearing ? .6 : 1,
-          }}>
-            <span style={{ display: "inline-block", animation: clearing ? "spin .8s linear infinite" : "none" }}>🗑</span>
-            {clearing ? "Limpando..." : "Limpar cache"}
-          </button>
+          {process.env.NODE_ENV === "development" && (
+            <>
+              <button onClick={runDebug} disabled={debugging} title="Logs no console F12" style={{
+                background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.2)",
+                color: "#A78BFA", borderRadius: 10, padding: "8px 13px",
+                fontSize: 11, fontWeight: 700, cursor: debugging ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: 5, opacity: debugging ? .6 : 1,
+              }}>
+                <span style={{ display: "inline-block", animation: debugging ? "spin .8s linear infinite" : "none" }}>🔍</span>
+                {debugging ? "Analisando..." : "Debug F12"}
+              </button>
+              <button onClick={clearCache} disabled={clearing} style={{
+                background: "rgba(255,75,75,.1)", border: "1px solid rgba(255,75,75,.2)",
+                color: "#FF4B4B", borderRadius: 10, padding: "8px 13px",
+                fontSize: 11, fontWeight: 700, cursor: clearing ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: 5, opacity: clearing ? .6 : 1,
+              }}>
+                <span style={{ display: "inline-block", animation: clearing ? "spin .8s linear infinite" : "none" }}>🗑</span>
+                {clearing ? "Limpando..." : "Limpar cache"}
+              </button>
+            </>
+          )}
           <button onClick={() => fetchConcursos(true)} disabled={refreshing} style={{
             background: refreshing ? "rgba(0,200,150,.15)" : "linear-gradient(135deg,#00C896,#00A87A)",
             color: refreshing ? "#00C896" : "#002D1F",
@@ -628,7 +699,7 @@ export default function Home() {
             {filtered.length > 0 && (
               <div style={{ color: "rgba(255,255,255,.2)", fontSize: 11, marginBottom: 4, paddingLeft: 4 }}>
                 {filtered.length} concurso{filtered.length !== 1 ? "s" : ""} encontrado{filtered.length !== 1 ? "s" : ""}
-                {busca && ` para "${busca}"`}
+                {buscaDebounced && ` para "${buscaDebounced}"`}
               </div>
             )}
 

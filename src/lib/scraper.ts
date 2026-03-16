@@ -314,18 +314,31 @@ function normalizarNomeCargo(cargo: string): string {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function fetchComTimeout(url: string): Promise<string | null> {
-  const ctrl  = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { headers: FETCH_HEADERS, cache: "no-store", signal: ctrl.signal });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Faz fetch com timeout + retry automático (backoff exponencial).
+ * Tentativas: 1ª imediata → 2ª após 300ms → 3ª após 600ms.
+ * Retorna null somente se todas as tentativas falharem.
+ */
+async function fetchComTimeout(url: string, retries = 3): Promise<string | null> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { headers: FETCH_HEADERS, cache: "no-store", signal: ctrl.signal });
+      if (res.ok) return await res.text();
+      // Status 4xx não adianta tentar novamente
+      if (res.status >= 400 && res.status < 500) return null;
+    } catch {
+      // timeout ou erro de rede — vai tentar novamente
+    } finally {
+      clearTimeout(timer);
+    }
+    // Aguarda antes da próxima tentativa (backoff: 300ms, 600ms)
+    if (attempt < retries - 1) await sleep(300 * (attempt + 1));
   }
+  return null;
 }
 
 function slugify(t: string) {

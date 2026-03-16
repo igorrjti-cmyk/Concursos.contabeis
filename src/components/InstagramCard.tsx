@@ -1,7 +1,6 @@
 "use client";
-// src/components/InstagramCard.tsx — v5
-// Data da prova SEMPRE presente no card (feed + stories)
-// Cargo já vem filtrado para só os contábeis (via filtrarCargosContabeis no scraper)
+// src/components/InstagramCard.tsx — v6
+// Etapa 1: truncagem de cargo longo + titleSize granular
 
 import { Concurso, statusDisplay } from "@/lib/scraper";
 
@@ -32,8 +31,17 @@ export default function InstagramCard({
   const H   = isStories ? 480 : 480;
   const PAD = isStories ? 20  : 28;
 
-  const statusText = statusDisplay(c.status);
-  const titleSize  = isStories ? 13 : c.cargo.length > 28 ? 16 : 21;
+  const statusText  = statusDisplay(c.status);
+  // Trunca cargos muito longos para não quebrar o layout
+  const MAX_CARGO   = isStories ? 30 : 38;
+  const cargoDisplay = c.cargo.length > MAX_CARGO
+    ? c.cargo.slice(0, MAX_CARGO - 1).trimEnd() + "…"
+    : c.cargo;
+  // titleSize mais granular para acomodar melhor cada tamanho
+  const titleSize = isStories ? 12
+    : c.cargo.length > 40 ? 13
+    : c.cargo.length > 28 ? 16
+    : 21;
 
   // Grid de campos principais (sem data de prova — ela fica em bloco próprio)
   const campos = [
@@ -67,8 +75,9 @@ export default function InstagramCard({
     >
       {/* ── Faixa lateral colorida por status ── */}
       <div style={{
-        position: "absolute", left: 0, top: 0, bottom: 0, width: 4,
-        background: `linear-gradient(to bottom, ${st.bg}, transparent)`,
+        position: "absolute", left: 0, top: 0, bottom: 0, width: 7,
+        background: `linear-gradient(to bottom, ${st.bg} 60%, transparent)`,
+        borderRadius: "20px 0 0 20px",
       }} />
 
       {/* ── Grid de fundo ── */}
@@ -89,13 +98,23 @@ export default function InstagramCard({
 
       {/* ── TOP: marca + badge status ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", position: "relative" }}>
-        <span style={{
-          background: "linear-gradient(90deg,#00C896,#00E5A8)",
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-          fontSize: 8, fontWeight: 800, letterSpacing: 2, textTransform: "uppercase",
-        }}>
-          Concursos Contábeis
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          {/* Ícone de marca — cifrão estilizado em círculo */}
+          <svg width="14" height="14" viewBox="0 0 14 14" style={{ flexShrink: 0 }}>
+            <circle cx="7" cy="7" r="6.5" fill="none" stroke="#00C896" strokeWidth="1"/>
+            <text x="7" y="11" textAnchor="middle" fill="#00C896"
+              style={{ fontSize: "9px", fontWeight: 800, fontFamily: "sans-serif" }}>
+              $
+            </text>
+          </svg>
+          <span style={{
+            background: "linear-gradient(90deg,#00C896,#00E5A8)",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+            fontSize: 8, fontWeight: 800, letterSpacing: 2, textTransform: "uppercase",
+          }}>
+            Concursos Contábeis
+          </span>
+        </div>
         <span style={{
           background: st.bg, color: st.color,
           fontSize: 8, fontWeight: 800,
@@ -141,7 +160,7 @@ export default function InstagramCard({
           color: "#fff", fontSize: titleSize, fontWeight: 800,
           lineHeight: 1.2, letterSpacing: "-0.3px", marginBottom: 3,
         }}>
-          {c.cargo}
+          {cargoDisplay}
         </div>
         <div style={{ color: "#00C896", fontSize: isStories ? 10 : 12, fontWeight: 700, marginBottom: 3 }}>
           {c.orgao}
@@ -162,50 +181,46 @@ export default function InstagramCard({
         </div>
       </div>
 
-      {/* ── DATA DA PROVA — SEMPRE VISÍVEL ─────────────────────────────────────
-           Se não tem data, mostra "A definir" para manter o layout consistente  */}
-      <div style={{
-        background: temProva
-          ? "linear-gradient(135deg,rgba(167,139,250,0.18),rgba(139,92,246,0.12))"
-          : "rgba(255,255,255,.03)",
-        border: temProva
-          ? "1px solid rgba(167,139,250,0.35)"
-          : "1px solid rgba(255,255,255,.08)",
-        borderRadius: 10, padding: "8px 12px",
-        display: "flex", alignItems: "center", gap: 10,
-        position: "relative",
-      }}>
-        <span style={{ fontSize: 16 }}>📝</span>
-        <div style={{ flex: 1 }}>
-          <div style={{
-            color: temProva ? "rgba(167,139,250,0.8)" : "rgba(255,255,255,.3)",
-            fontSize: 7.5, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase",
-            marginBottom: 1,
-          }}>
-            Data da Prova
-          </div>
-          <div style={{
-            color: temProva ? "#C4B5FD" : "rgba(255,255,255,.25)",
-            fontSize: isStories ? 13 : 16, fontWeight: 800, letterSpacing: "-0.3px",
-          }}>
-            {temProva ? c.dataProva : "A definir"}
-          </div>
-        </div>
-        {/* Resultado ao lado se disponível */}
-        {temRes && (
-          <div style={{ textAlign: "right" }}>
+      {/* ── DATA DA PROVA — só renderiza quando há data confirmada ── */}
+      {temProva && (
+        <div style={{
+          background: "linear-gradient(135deg,rgba(167,139,250,0.18),rgba(139,92,246,0.12))",
+          border: "1px solid rgba(167,139,250,0.35)",
+          borderRadius: 10, padding: "8px 12px",
+          display: "flex", alignItems: "center", gap: 10,
+          position: "relative",
+        }}>
+          <span style={{ fontSize: 16 }}>📝</span>
+          <div style={{ flex: 1 }}>
             <div style={{
-              color: "rgba(167,139,250,0.7)", fontSize: 7.5,
-              fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", marginBottom: 1,
+              color: "rgba(167,139,250,0.8)",
+              fontSize: 7.5, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase",
+              marginBottom: 1,
             }}>
-              Resultado
+              Data da Prova
             </div>
-            <div style={{ color: "#C4B5FD", fontSize: isStories ? 11 : 13, fontWeight: 700 }}>
-              {c.dataResultado}
+            <div style={{
+              color: "#C4B5FD",
+              fontSize: isStories ? 13 : 16, fontWeight: 800, letterSpacing: "-0.3px",
+            }}>
+              {c.dataProva}
             </div>
           </div>
-        )}
-      </div>
+          {temRes && (
+            <div style={{ textAlign: "right" }}>
+              <div style={{
+                color: "rgba(167,139,250,0.7)", fontSize: 7.5,
+                fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", marginBottom: 1,
+              }}>
+                Resultado
+              </div>
+              <div style={{ color: "#C4B5FD", fontSize: isStories ? 11 : 13, fontWeight: 700 }}>
+                {c.dataResultado}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── GRID DE CAMPOS ── */}
       <div style={{
