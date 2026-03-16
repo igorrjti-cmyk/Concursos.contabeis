@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     const { data: cacheRow } = await sb
       .from("cache_concursos")
       .select("dados")
-      .eq("chave", "concursos:v17")
+      .eq("chave", "concursos:v19")
       .single<{ dados: { concursos: Concurso[] } }>();
 
     if (!cacheRow?.dados?.concursos) {

@@ -45,23 +45,23 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
 
       if (anosEncontrados.length > 0) {
         const anoMaisRecente = Math.max(...anosEncontrados);
-        if (anoMaisRecente < anoAtual - 1) {
-          status = "Encerrado"; // todos os anos são antigos
+        if (anoMaisRecente < anoAtual) {
+          status = "Encerrado"; // inscrição encerrada em ano anterior ao atual
         }
       } else {
-        // Sem nenhuma data — usa diasRestantes como critério
-        if (diasRestantes < -365) {
+        // Sem nenhuma data — descarta se prazo passou há mais de 30 dias
+        if (diasRestantes < -30) {
           status = "Encerrado";
         }
       }
 
       // Inscrições abertas → verifica se prazo passou
       if (status === "Inscricoes Abertas" && diasRestantes < 0) {
-        status = "Previsto";
+        status = "Encerrado";
       }
 
-      // Previsto/Aguardando Prova → verifica datas do edital
-      if (status === "Previsto" || status === "Aguardando Prova") {
+      // Aguardando Prova → verifica datas do edital
+      if (status === "Aguardando Prova") {
         if (c.dataProva && c.dataProva !== "-") {
           const [d, m, y] = c.dataProva.split("/").map(Number);
           if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
@@ -97,7 +97,7 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
     .filter(c => c.status !== "Encerrado");
 }
 
-const CACHE_KEY = "concursos:v17"; // v4 = nova chave, invalida cache antigo
+const CACHE_KEY = "concursos:v19"; // v4 = nova chave, invalida cache antigo
 const CACHE_TTL_HORAS = 6;
 
 interface CacheRow {

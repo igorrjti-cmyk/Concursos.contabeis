@@ -6,7 +6,7 @@ import { gerarLegenda } from "@/lib/legenda";
 import type { Concurso } from "@/lib/scraper";
 import type { PostHistorico } from "@/app/api/historico/route";
 
-type FilterStatus = "todos" | "Inscricoes Abertas" | "Aguardando Prova" | "Previsto";
+type FilterStatus = "todos" | "Inscricoes Abertas" | "Aguardando Prova";
 type TabType = "lista" | "cards" | "historico" | "favoritos" | "stats" | "calendario";
 type CardFormato = "feed" | "stories";
 type SortBy = "padrao" | "salario" | "vagas" | "prazo";
@@ -342,7 +342,6 @@ export default function Home() {
   const contagens = {
     total:    concursos.length,
     abertas:  concursos.filter(c => c.status === "Inscricoes Abertas").length,
-    previstos: concursos.filter(c => c.status === "Previsto").length,
     urgentes: concursos.filter(c => c.diasRestantes >= 0 && c.diasRestantes <= 7).length,
     comProva: concursos.filter(c => c.dataProva && c.dataProva !== "-").length,
   };
@@ -491,7 +490,6 @@ export default function Home() {
         <StatCard label="Total"             value={contagens.total}    color="#fff"     />
         <StatCard label="Inscrições Abertas" value={contagens.abertas}  color="#00C896"  sub={`${contagens.urgentes} urgentes`} />
         <StatCard label="Aguardando Prova"   value={concursos.filter(c => c.status === "Aguardando Prova").length} color="#A78BFA" />
-        <StatCard label="Previstos"          value={contagens.previstos} color="#FFB800" />
         <StatCard label="Com Data de Prova"  value={contagens.comProva}  color="#A78BFA" />
         {contagens.urgentes > 0 && (
           <StatCard label="⚡ Urgentes (≤7d)" value={contagens.urgentes}  color="#FF4B4B" sub="encerram em breve" />
@@ -538,7 +536,7 @@ export default function Home() {
           />
 
           {/* Filtro status */}
-          {(["todos", "Inscricoes Abertas", "Aguardando Prova", "Previsto"] as FilterStatus[]).map(f => (
+          {(["todos", "Inscricoes Abertas", "Aguardando Prova"] as FilterStatus[]).map(f => (
             <button key={f} onClick={() => setFilter(f)} style={{
               background: filter === f ? "rgba(0,200,150,.1)" : "transparent",
               border: "1px solid " + (filter === f ? "#00C896" : "rgba(255,255,255,.1)"),

@@ -365,9 +365,9 @@ function calcDiasRestantes(inscricao: string): number {
 }
 
 function detectStatus(inscricaoAte: string): Concurso["status"] {
-  if (!inscricaoAte || inscricaoAte === "Ver edital") return "Previsto";
+  if (!inscricaoAte || inscricaoAte === "Ver edital") return "Encerrado";
   const dias = calcDiasRestantes(inscricaoAte);
-  if (dias < 0) return "Previsto";
+  if (dias < 0) return "Encerrado";
   return "Inscricoes Abertas";
 }
 
@@ -380,7 +380,8 @@ function reclassificarStatus(
   dataProva: string,
   dataResultado: string
 ): Concurso["status"] {
-  if (status !== "Previsto") return status;
+  if (status !== "Previsto" && status !== "Encerrado") return status;
+  if (status === "Encerrado") return "Encerrado";
 
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
@@ -979,7 +980,7 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     // Usa datas já disponíveis na listagem para descartar antigos sem HTTP extra
     const inscricaoCheck = item.inscricao || item.inscricaoAte || "";
     const anosRapidos = (inscricaoCheck.match(/\d{4}/g) || []).map(Number).filter(a => a > 2000);
-    if (anosRapidos.length > 0 && Math.max(...anosRapidos) < new Date().getFullYear() - 1) {
+    if (anosRapidos.length > 0 && Math.max(...anosRapidos) < new Date().getFullYear()) {
       continue; // inscrição muito antiga — descarta sem nem acessar a notícia
     }
 
