@@ -263,6 +263,8 @@ const CARGOS_NAO_CONTABEIS = [
   "tecnico de informatica", "programador",
   // engenharia
   "engenheiro", "arquiteto", "topógrafo", "topografo",
+  // controle interno (cargo diferente de Contador/Auditor Contábil)
+  "controlador interno", "controller",
 ];
 
 /**
