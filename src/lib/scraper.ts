@@ -59,11 +59,16 @@ export const VAGAS_URLS = [
   "/vagas/sub-contador",
 ];
 
-// Nota: o PCI Concursos não possui seção separada para concursos aguardando prova.
-// Todos os concursos ativos (incluindo inscrições recém-encerradas com prova futura)
-// ficam em /vagas/. O status "Aguardando Prova" é calculado automaticamente pelo
-// reclassificarStatus() após as inscrições encerrarem.
-const CONCURSOS_URLS: string[] = [];
+// URLs de concursos com inscrições encerradas mas prova futura ("Aguardando Prova").
+// O PCI Concursos lista esses concursos em /concursos/ após o encerramento das inscrições.
+const CONCURSOS_URLS: string[] = [
+  "/concursos/contador",
+  "/concursos/contabilidade",
+  "/concursos/auditor-fiscal",
+  "/concursos/fiscal-de-tributos",
+  "/concursos/tecnico-em-contabilidade",
+  "/concursos/analista-contabil",
+];
 
 
 const FETCH_HEADERS = {
@@ -382,11 +387,29 @@ function slugify(t: string) {
     .slice(0, 80);
 }
 
-function detectNivel(t: string) {
+function detectNivel(t: string, cargo = "") {
   const l = t.toLowerCase();
+  const cargoLow = cargo.toLowerCase();
   const s  = l.includes("superior");
   const m  = l.includes("medio") || l.includes("médio");
   const tc = l.includes("tecnico") || l.includes("técnico");
+
+  // Se o cargo é explicitamente "Técnico em Contabilidade", nível é Médio/Técnico
+  if (cargoLow.includes("técnico em contabilidade") || cargoLow.includes("tecnico em contabilidade")) {
+    return s ? "Médio/Técnico/Superior" : "Médio/Técnico";
+  }
+
+  // Cargos contábeis de nível superior por definição (contador, auditor, analista, fiscal)
+  const ehCargoSuperior = [
+    "contador", "contadora", "auditor", "analista contábil", "analista contabil",
+    "fiscal de tribut", "fiscal de rendas", "fiscal de receitas",
+  ].some(kw => cargoLow.includes(kw));
+
+  if (ehCargoSuperior) {
+    // Mesmo que a linha diga "Médio/Superior", o cargo contábil é Superior
+    return "Superior";
+  }
+
   if (s && (m || tc)) return "Médio/Técnico/Superior";
   if (tc) return "Médio/Técnico";
   if (s) return "Superior";
@@ -951,7 +974,7 @@ export async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> 
     items.push({
       id:            slugify(cargo + "-" + orgao),
       orgao, estado: ufDoTitle, vagas: vagasStr, salario: salarioStr,
-      cargo, nivel: detectNivel(nivelRaw), inscricao, inscricaoAte,
+      cargo, nivel: detectNivel(nivelRaw, cargo), inscricao, inscricaoAte,
       diasRestantes: calcDiasRestantes(inscricaoAte),
       linkNoticia: href, linkEdital: href, banca: "-",
       dataProva: "-", dataResultado: "-",
@@ -1111,7 +1134,7 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
 
   if (brutos.length === 0) return getFallbackData();
 
-  const LIMITE_DETALHE = 40; // busca detalhes dos primeiros 40
+  const LIMITE_DETALHE = 80; // busca detalhes de até 80 concursos (antes era 40)
   const completos: Concurso[] = [];
 
   // Filtra brutos rapidamente antes de fazer scrapeDetalhe (sem HTTP)
@@ -1215,7 +1238,7 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       linkNoticia:    item.linkNoticia || "",
       linkEdital:     det.linkEdital || item.linkNoticia || "",
       banca:          det.banca !== "-" ? det.banca : (item.banca || "-"),
-      nivel:          item.nivel || "Superior",
+      nivel:          detectNivel(item.nivel || "Superior", cargoDisplay),
       dataProva:      det.dataProva,
       dataResultado:  det.dataResultado,
       status:          reclassificarStatus(

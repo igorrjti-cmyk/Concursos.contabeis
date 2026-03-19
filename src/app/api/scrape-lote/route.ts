@@ -13,16 +13,60 @@
 // resultados anteriores — o usuário já vê dados novos enquanto o resto carrega.
 
 import { NextResponse }                          from "next/server";
-import { scrapeListagem, scrapeDetalhe, VAGAS_URLS } from "@/lib/scraper";
+import { scrapeListagem, scrapeDetalhe, VAGAS_URLS, filtrarCargosContabeis } from "@/lib/scraper";
 import { getSupabase }                           from "@/lib/supabase";
 import type { Concurso }                         from "@/lib/scraper";
 
 export const runtime     = "nodejs";
 export const maxDuration = 60;
 
-const CACHE_KEY      = "concursos:v19";
+const CACHE_KEY      = "concursos:v20"; // v20 = inclui CONCURSOS_URLS
 const LOTE_KEY       = "scrape-lote:progresso";
 const LIMITE_DETALHE = 8; // máx de detalhes por lote (evita timeout)
+
+// URLs de concursos com inscrições encerradas mas prova futura ("Aguardando Prova")
+const CONCURSOS_URLS_LOTE = [
+  "/concursos/contador",
+  "/concursos/contabilidade",
+  "/concursos/auditor-fiscal",
+  "/concursos/fiscal-de-tributos",
+  "/concursos/tecnico-em-contabilidade",
+  "/concursos/analista-contabil",
+];
+
+// Todas as URLs a processar em lotes: vagas ativas + concursos em andamento
+const TODAS_URLS = [...VAGAS_URLS, ...CONCURSOS_URLS_LOTE];
+
+// Reclassifica status com base nas datas de prova/resultado
+function reclassificarStatus(
+  status: Concurso["status"],
+  dataProva: string,
+  dataResultado: string
+): Concurso["status"] {
+  if (status === "Inscricoes Abertas") return status;
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  if (dataProva && dataProva !== "-") {
+    const [d, m, y] = dataProva.split("/").map(Number);
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+      const dp = new Date(y, m - 1, d);
+      if (dp >= hoje) return "Aguardando Prova";
+      if (dataResultado && dataResultado !== "-") {
+        const [dr, mr, yr] = dataResultado.split("/").map(Number);
+        const dRes = new Date(yr, mr - 1, dr);
+        if (dRes >= hoje) return "Aguardando Prova";
+      }
+      return "Encerrado";
+    }
+  }
+  if (dataResultado && dataResultado !== "-") {
+    const [dr, mr, yr] = dataResultado.split("/").map(Number);
+    if (!isNaN(dr) && !isNaN(mr) && !isNaN(yr)) {
+      const dRes = new Date(yr, mr - 1, dr);
+      if (dRes >= hoje) return "Aguardando Prova";
+    }
+  }
+  return status;
+}
 
 function slugify(t: string) {
   return t.toLowerCase()
@@ -41,7 +85,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "Supabase não configurado" }, { status: 503 });
   }
 
-  const urls = VAGAS_URLS;
+  const urls = TODAS_URLS;
   const total = urls.length;
 
   if (loteIdx >= total) {
@@ -124,12 +168,26 @@ export async function GET(req: Request) {
 
       const cargoDisplay = det.cargosContabeis.length > 0 && item.cargo === "Vários Cargos"
         ? det.cargosContabeis.join(", ")
-        : item.cargo || "-";
+        : filtrarCargosContabeis(item.cargo || "-");
+
+      // Itens vindos de /concursos/ (inscrições encerradas) começam como "Previsto"
+      // e são reclassificados para "Aguardando Prova" se tiverem prova futura
+      const ehUrlConcursos = CONCURSOS_URLS_LOTE.some(u => urlPath.startsWith(u));
+      const statusBase = ehUrlConcursos ? "Previsto" : (item.status as Concurso["status"]);
+      const statusFinal = reclassificarStatus(
+        statusBase,
+        det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-",
+        det.dataResultado !== "-" ? det.dataResultado : item.dataResultado ?? "-"
+      );
+
+      // Descarta encerrados que vieram de /concursos/ sem prova futura
+      if (statusFinal === "Encerrado") continue;
 
       novos.push({
         ...item,
         id:             key,
         cargo:          cargoDisplay,
+        status:         statusFinal,
         banca:          det.banca !== "-" ? det.banca : item.banca ?? "-",
         dataProva:      det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-",
         dataResultado:  det.dataResultado !== "-" ? det.dataResultado : item.dataResultado ?? "-",

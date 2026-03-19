@@ -275,7 +275,7 @@ function HomeContent() {
     }
   };
 
-  const TOTAL_LOTES = 16; // deve bater com VAGAS_URLS.length no scraper.ts
+  const TOTAL_LOTES = 22; // VAGAS_URLS(16) + CONCURSOS_URLS(6) — deve bater com o scraper.ts
 
   const fetchConcursos = useCallback(async (forceRefresh = false) => {
     forceRefresh ? setRefreshing(true) : setLoading(true);
@@ -399,7 +399,16 @@ function HomeContent() {
     let list = concursos.filter(c => {
       if (filter !== "todos" && c.status !== filter) return false;
       if (estadoFiltro !== "Todos" && c.estado !== estadoFiltro) return false;
-      if (nivelFiltro !== "Todos" && !c.nivel.includes(nivelFiltro.replace("Todos", ""))) return false;
+      if (nivelFiltro !== "Todos") {
+        // Filtro exato: "Superior" mostra apenas concursos de nível Superior (inclui Superior puro e Médio/Técnico/Superior)
+        // "Médio/Técnico" mostra apenas Médio/Técnico puro
+        // "Médio/Técnico/Superior" mostra apenas esse nível específico
+        if (nivelFiltro === "Superior") {
+          if (!c.nivel.includes("Superior")) return false;
+        } else {
+          if (c.nivel !== nivelFiltro) return false;
+        }
+      }
       if (buscaDebounced.trim()) {
         const q = buscaDebounced.toLowerCase();
         if (!c.cargo.toLowerCase().includes(q) && !c.orgao.toLowerCase().includes(q) && !c.estado.toLowerCase().includes(q)) return false;
@@ -717,7 +726,11 @@ function HomeContent() {
             color: "rgba(255,255,255,.6)", borderRadius: 9, padding: "6px 10px",
             fontSize: 11, cursor: "pointer",
           }}>
-            {NIVEIS.map(n => <option key={n} value={n}>{n === "Todos" ? "🎓 Nível" : n}</option>)}
+            {NIVEIS.map(n => (
+              <option key={n} value={n}>
+                {n === "Todos" ? "🎓 Nível" : n === "Superior" ? "Superior (inclui misto)" : n}
+              </option>
+            ))}
           </select>
 
           {/* Ordenação */}
