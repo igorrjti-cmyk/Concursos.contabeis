@@ -907,7 +907,8 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     // Filtro contábil — verifica cargo da linha, título e orgão
     const nivelSuperior = nivelRaw.toLowerCase().includes("superior");
     const cargoGenerico = CARGO_GENERICO_CONTABIL_KW.some(kw => cargo.toLowerCase().includes(kw));
-    const passaParaDetalhe = nivelSuperior && cargoGenerico;
+    const ehVariosCargos = cargo.toLowerCase().includes("vários cargos") || cargo.toLowerCase().includes("varios cargos");
+    const passaParaDetalhe = (nivelSuperior && cargoGenerico) || ehVariosCargos;
     if (!ehConcursoContabil(cargo, title, orgao) && !passaParaDetalhe && !titleTemContabil) continue;
 
     items.push({
