@@ -52,15 +52,17 @@ export async function GET(req: Request) {
 
   // ── 1. Carrega resultados parciais já salvos ──────────────────────────────
   let concursosAcumulados: Concurso[] = [];
-  const { data: progData } = await sb
-    .from("cache_concursos")
-    .select("dados")
-    .eq("chave", LOTE_KEY)
-    .single()
-    .catch(() => ({ data: null }));
-
-  if (progData?.dados?.concursos) {
-    concursosAcumulados = progData.dados.concursos;
+  try {
+    const { data: progData } = await sb
+      .from("cache_concursos")
+      .select("dados")
+      .eq("chave", LOTE_KEY)
+      .single();
+    if (progData?.dados?.concursos) {
+      concursosAcumulados = progData.dados.concursos;
+    }
+  } catch {
+    // sem progresso anterior — começa do zero
   }
 
   // ── 2. Scrapa a URL deste lote ────────────────────────────────────────────
