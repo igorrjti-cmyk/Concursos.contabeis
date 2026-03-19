@@ -8,7 +8,7 @@ import { scrapeAllConcursos } from "@/lib/scraper";
 import { getSupabase }        from "@/lib/supabase";
 
 export const runtime     = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const CACHE_KEY = "concursos:v19";
 
