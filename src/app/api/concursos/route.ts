@@ -1,11 +1,14 @@
 // src/app/api/concursos/route.ts
 // Cache via Supabase (tabela cache_concursos) - TTL 6h
-// Fallback para scraping ao vivo se Supabase nao estiver configurado
 
 import { NextResponse } from "next/server";
 import { scrapeAllConcursos } from "@/lib/scraper";
 import { getSupabase } from "@/lib/supabase";
 import type { Concurso } from "@/lib/scraper";
+
+// Necessário: sem isso o Vercel corta o scraping em 10s (timeout padrão)
+export const runtime     = "nodejs";
+export const maxDuration = 60; // 60s — suficiente para scraping + PDFs
 
 // Reclassifica status baseado na data atual — corrige cache desatualizado
 function reclassificarCache(concursos: Concurso[]): Concurso[] {
