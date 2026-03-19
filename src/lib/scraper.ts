@@ -72,7 +72,7 @@ const FETCH_HEADERS = {
   "Accept-Language": "pt-BR,pt;q=0.9",
 };
 
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 5000;
 
 // ─── Bancas conhecidas (ordem importa: mais específico primeiro) ───────────────
 const BANCAS_CONHECIDAS = [
@@ -353,7 +353,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
  * Tentativas: 1ª imediata → 2ª após 300ms → 3ª após 600ms.
  * Retorna null somente se todas as tentativas falharem.
  */
-async function fetchComTimeout(url: string, retries = 3): Promise<string | null> {
+async function fetchComTimeout(url: string, retries = 2): Promise<string | null> {
   for (let attempt = 0; attempt < retries; attempt++) {
     const ctrl  = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
@@ -1078,32 +1078,43 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
 
   if (brutos.length === 0) return getFallbackData();
 
-  const LIMITE_DETALHE = 60; // busca detalhes dos primeiros 60
+  const LIMITE_DETALHE = 40; // busca detalhes dos primeiros 40
   const completos: Concurso[] = [];
 
-  for (let i = 0; i < brutos.length; i++) {
-    const item = brutos[i];
-    let det: DetalhesEdital = {
-      dataProva: "-", dataResultado: "-", banca: "-",
-      linkEdital: "", cargosContabeis: [], requisito: "-",
-      ehProcessoSeletivo: false,
-    };
-
-    // ── Filtro de ano rápido (antes de fazer o scrapeDetalhe) ─────────────
-    // Usa datas já disponíveis na listagem para descartar antigos sem HTTP extra
-    // Não aplica para "Previsto" ou "Encerrado" recente — podem ter prova futura sem data de inscrição
+  // Filtra brutos rapidamente antes de fazer scrapeDetalhe (sem HTTP)
+  const brutosFiltrados = brutos.filter(item => {
     const inscricaoCheck = item.inscricao || item.inscricaoAte || "";
     const statusPassavel = item.status === "Previsto" || item.status === "Encerrado";
     if (!statusPassavel && inscricaoCheck && inscricaoCheck !== "Ver edital") {
       const anosRapidos = (inscricaoCheck.match(/\d{4}/g) || []).map(Number).filter(a => a > 2000);
       if (anosRapidos.length > 0 && Math.max(...anosRapidos) < new Date().getFullYear()) {
-        continue; // inscrição muito antiga — descarta sem nem acessar a notícia
+        return false; // inscrição muito antiga — descarta
       }
     }
+    return true;
+  }).slice(0, LIMITE_DETALHE);
 
-    if (i < LIMITE_DETALHE && item.linkNoticia) {
-      det = await scrapeDetalhe(item.linkNoticia);
-    }
+  // Paraleliza scrapeDetalhe em lotes de 5 para não estourar timeout
+  const LOTE = 5;
+  const detalhes: DetalhesEdital[] = [];
+  for (let i = 0; i < brutosFiltrados.length; i += LOTE) {
+    const lote = brutosFiltrados.slice(i, i + LOTE);
+    const resultados = await Promise.all(
+      lote.map(item => item.linkNoticia
+        ? scrapeDetalhe(item.linkNoticia)
+        : Promise.resolve({ dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "", cargosContabeis: [], requisito: "-", ehProcessoSeletivo: false } as DetalhesEdital)
+      )
+    );
+    detalhes.push(...resultados);
+  }
+
+  for (let i = 0; i < brutosFiltrados.length; i++) {
+    const item = brutosFiltrados[i];
+    let det: DetalhesEdital = detalhes[i] ?? {
+      dataProva: "-", dataResultado: "-", banca: "-",
+      linkEdital: "", cargosContabeis: [], requisito: "-",
+      ehProcessoSeletivo: false,
+    };
 
     // Descarta se o texto da notícia indica processo seletivo
     if (det.ehProcessoSeletivo) continue;
