@@ -147,16 +147,15 @@ export async function GET(req: Request) {
 
       if (det.ehProcessoSeletivo) continue;
 
-      // Descarta se a data de prova já passou (ano anterior ao atual)
-      const anoLote = new Date().getFullYear();
+      // Descarta se a data de prova já passou (compara data completa, cobre mesmo ano)
       const dataProvaFinal = det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-";
       if (dataProvaFinal && dataProvaFinal !== "-") {
         const mPv = dataProvaFinal.match(/(\d{2})\/(\d{2})\/(\d{4})/);
         if (mPv) {
-          const anoPv = parseInt(mPv[3]);
-          const dtPv = new Date(anoPv, parseInt(mPv[2]) - 1, parseInt(mPv[1]));
-          const hojeL = new Date(); hojeL.setHours(0,0,0,0);
-          if (dtPv < hojeL && anoPv <= anoLote - 1) continue;
+          const dtPv = new Date(parseInt(mPv[3]), parseInt(mPv[2]) - 1, parseInt(mPv[1]));
+          dtPv.setHours(0, 0, 0, 0);
+          const hojeL = new Date(); hojeL.setHours(0, 0, 0, 0);
+          if (dtPv < hojeL) continue; // prova já passou → descarta
         }
       }
 

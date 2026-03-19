@@ -405,7 +405,16 @@ function HomeContent() {
 
   // Filtragem + ordenação
   const filtered = (() => {
+    const hojeMs = new Date().setHours(0, 0, 0, 0);
     let list = concursos.filter(c => {
+      // Última linha de defesa: oculta concursos com prova já realizada
+      if (c.dataProva && c.dataProva !== "-") {
+        const p = c.dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (p) {
+          const dtP = new Date(parseInt(p[3]), parseInt(p[2]) - 1, parseInt(p[1])).setHours(0,0,0,0);
+          if (dtP < hojeMs) return false;
+        }
+      }
       if (filter !== "todos" && c.status !== filter) return false;
       if (estadoFiltro !== "Todos" && c.estado !== estadoFiltro) return false;
       if (nivelFiltro !== "Todos") {

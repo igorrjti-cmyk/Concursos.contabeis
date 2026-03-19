@@ -1168,15 +1168,13 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     // Descarta se o texto da notícia indica processo seletivo
     if (det.ehProcessoSeletivo) continue;
 
-    // Descarta se a data de prova já passou (ano anterior ao atual)
-    const anoAtualCheck2 = new Date().getFullYear();
+    // Descarta se a data de prova já passou (compara data completa, não só ano)
     if (det.dataProva && det.dataProva !== "-") {
       const mProva = det.dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
       if (mProva) {
-        const anoProva = parseInt(mProva[3]);
-        const diaProva = new Date(anoProva, parseInt(mProva[2]) - 1, parseInt(mProva[1]));
+        const diaProva = new Date(parseInt(mProva[3]), parseInt(mProva[2]) - 1, parseInt(mProva[1]));
         const hoje2 = new Date(); hoje2.setHours(0,0,0,0);
-        if (diaProva < hoje2 && anoProva <= anoAtualCheck2 - 1) continue; // prova de ano anterior
+        if (diaProva < hoje2) continue; // prova já passou → descarta
       }
     }
 
@@ -1225,6 +1223,17 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       det.cargosContabeis.length > 0
     ) {
       cargoDisplay = det.cargosContabeis.join(", ");
+    }
+
+    // Rejeição final: se a data de prova já passou, não inclui no resultado
+    if (det.dataProva && det.dataProva !== "-") {
+      const mpFinal = det.dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (mpFinal) {
+        const dtFinal = new Date(parseInt(mpFinal[3]), parseInt(mpFinal[2]) - 1, parseInt(mpFinal[1]));
+        dtFinal.setHours(0, 0, 0, 0);
+        const hojeFinal = new Date(); hojeFinal.setHours(0, 0, 0, 0);
+        if (dtFinal < hojeFinal) continue; // prova já passou — descarta
+      }
     }
 
     completos.push({

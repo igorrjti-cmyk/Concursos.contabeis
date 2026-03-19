@@ -33,12 +33,19 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
       // Descarta concursos antigos — verifica todos os campos de data
       const anoAtual = hoje.getFullYear();
 
-      // Descarta imediatamente se dataProva está em ano anterior ao atual
+      // Descarta se dataProva já passou — independente do status de inscrição.
+      // Cobre o caso onde inscricaoAte é futura mas a prova já ocorreu (dado desatualizado no PCI).
       if (c.dataProva && c.dataProva !== "-") {
         const provaParts = c.dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
         if (provaParts) {
-          const anoProva = parseInt(provaParts[3]);
-          if (anoProva < anoAtual) {
+          const dtProva = new Date(
+            parseInt(provaParts[3]),
+            parseInt(provaParts[2]) - 1,
+            parseInt(provaParts[1])
+          );
+          dtProva.setHours(0, 0, 0, 0);
+          if (dtProva < hoje) {
+            // Prova já passou — marca encerrado e filtra
             return { ...c, status: "Encerrado" as const, diasRestantes };
           }
         }
