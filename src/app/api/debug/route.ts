@@ -98,7 +98,7 @@ export async function GET(req: Request) {
     const dataUnica    = blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
 
     // Testa regex de vagas
-    const vagasMatch = blocoTexto.match(/(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+ate\s+R\$\s*([\d.,]+)/i);
+    const vagasMatch = blocoTexto.match(/(\d+\s+vagas?(?:\s*[+]\s*CR)?|cadastro\s+reserva)[^R]+R[$]\s*([\d.,]+)/i);
 
     blocos.push({
       orgao,
