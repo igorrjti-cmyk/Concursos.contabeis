@@ -328,7 +328,8 @@ function normalizarNomeCargo(cargo: string): string {
   for (const re of prefixos) {
     c = c.replace(re, "");
   }
-  c = c.trim();
+  // Remove prefixo solto "de/do/da/para" no início (ex: "de Contador" → "Contador")
+  c = c.replace(/^(de|do|da|para)\s+/i, "").trim();
 
   // Title case respeitando preposições
   const minusculas = new Set(["de", "da", "do", "das", "dos", "e", "em", "na", "no", "nas", "nos", "a", "o", "as", "os"]);
@@ -484,17 +485,18 @@ function ehConcursoContabil(
   const tudo   = (cargo + " " + title + " " + orgao + " " + textoEdital).toLowerCase();
   const titLow = title.toLowerCase();
 
-  // Rejeita processo seletivo em qualquer forma
+  // Rejeita processo seletivo simplificado/temporário (não concurso público)
+  // Mas mantém se o cargo contábil for explícito no título
   const textoTudo = (cargo + " " + title + " " + orgao).toLowerCase();
-  if (
-    textoTudo.includes("processo seletivo") ||
+  const temCargoContabilExplicito = CARGO_CONTABIL_KW.some(kw => titLow.includes(kw));
+  if (!temCargoContabilExplicito && (
     textoTudo.includes("seleção simplificada") ||
     textoTudo.includes("selecao simplificada") ||
     textoTudo.includes("seletivo simplificado") ||
     textoTudo.includes("contratação temporária") ||
     / pss[\s,.]/.test(textoTudo) ||
     / pst[\s,.]/.test(textoTudo)
-  ) return false;
+  )) return false;
 
   // Rejeita se title é claramente outra área
   if (AREAS_EXCLUIDAS_TITLE.some(t => titLow.includes(t))) return false;
@@ -821,9 +823,9 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
       // Tenta extrair cargo do padrão "para Cargo em Órgão"
       // Ex: "publica edital para Contador e Economista" → "Contador e Economista"
       // Ex: "abre concurso para o cargo de Contador" → "Contador" (sem o "de")
-      const m = title.match(/\b(?:para\s+(?:o\s+cargo\s+de\s+|os?\s+cargos?\s+de\s+)?|ao\s+cargo\s+de\s+|vagas?\s+(?:de\s+|para\s+))(.{3,80}?)(?:\s+e\s+(?:agente|analista|assistente|auxiliar|procurad|advogad)|\s+em\s+|\s+com\s+|\s+no\s+|\s+na\s+|\s+sob\s+|$)/i);
+      const m = title.match(/\b(?:para\s+(?:o\s+cargo\s+de\s+|os?\s+cargos?\s+de\s+)?|ao\s+cargo\s+de\s+|vagas?\s+(?:de\s+|para\s+)|edital\s+para\s+)(.{3,80}?)(?:\s+e\s+(?:agente|analista|assistente|auxiliar|procurad|advogad)|\s+em\s+|\s+com\s+|\s+no\s+|\s+na\s+|\s+sob\s+|\s+-\s+|$)/i);
       if (m) {
-        const c = m[1].trim().replace(/\s+$/, "").replace(/^(de|do|da|e)\s+/i, "");
+        const c = m[1].trim().replace(/\s+$/, "").replace(/^(de|do|da|e|o|a)\s+/i, "");
         if (c.length >= 3 && c.length < 80
           && !c.toLowerCase().includes("concurso")
           && !c.toLowerCase().includes("selecao")) return c;
@@ -886,8 +888,9 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     // Período de inscrição
     // Data vem sem espaço: "25/05 a25/06/2026" — busca na linha específica de data
     const linhaData = bloco.find(l => /\d{2}\/\d{2}.*\d{2}\/\d{2}\/\d{4}/.test(l)) ?? "";
-    const periodoMatch   = linhaData.match(/(\d{2}\/\d{2}(?:\/\d{4})?)\s*a\s*(\d{2}\/\d{2}\/\d{4})/) ||
-                           blocoTexto.match(/(\d{2}\/\d{2}(?:\/\d{4})?)\s*a\s*(\d{2}\/\d{2}\/\d{4})/);
+    // Aceita "25/05 a25/06/2026", "25/05 a 25/06/2026", "25/05a25/06/2026"
+    const reData = /(\d{2}\/\d{2}(?:\/\d{4})?)\s*a\s*(\d{2}\/\d{2}\/\d{4})/;
+    const periodoMatch   = linhaData.match(reData) || blocoTexto.match(reData);
     const dataUnicaMatch = linhaData.match(/(\d{2}\/\d{2}\/\d{4})/) ||
                            blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
 
@@ -906,10 +909,11 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
 
     // Filtro contábil — verifica cargo da linha, título e orgão
     const nivelSuperior = nivelRaw.toLowerCase().includes("superior");
-    const cargoGenerico = CARGO_GENERICO_CONTABIL_KW.some(kw => cargo.toLowerCase().includes(kw));
+    // "Vários Cargos" sempre passa — o filtro real acontece no scrapeDetalhe via cargosContabeis
     const ehVariosCargos = cargo.toLowerCase().includes("vários cargos") || cargo.toLowerCase().includes("varios cargos");
-    const passaParaDetalhe = (nivelSuperior && cargoGenerico) || ehVariosCargos;
-    if (!ehConcursoContabil(cargo, title, orgao) && !passaParaDetalhe && !titleTemContabil) continue;
+    const cargoGenerico = CARGO_GENERICO_CONTABIL_KW.some(kw => cargo.toLowerCase().includes(kw));
+    const passaParaDetalhe = (nivelSuperior && cargoGenerico) || ehVariosCargos || titleTemContabil;
+    if (!ehConcursoContabil(cargo, title, orgao) && !passaParaDetalhe) continue;
 
     items.push({
       id:            slugify(cargo + "-" + orgao),
