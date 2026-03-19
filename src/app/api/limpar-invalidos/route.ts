@@ -1,9 +1,4 @@
 // src/app/api/limpar-invalidos/route.ts
-// Endpoint de emergência: lê o cache atual do Supabase,
-// remove concursos com dataProva já passada, e salva de volta.
-// Chamar: GET /api/limpar-invalidos
-// Não precisa de novo scraping — apenas limpa o cache existente.
-
 import { NextResponse } from "next/server";
 import { getSupabase }  from "@/lib/supabase";
 import type { Concurso } from "@/lib/scraper";
@@ -13,23 +8,35 @@ export const maxDuration = 30;
 
 const CACHE_KEY = "concursos:v20";
 
-function provaPassou(dataProva: string): boolean {
+function provaPassou(dataProva: string, hoje: Date): boolean {
   if (!dataProva || dataProva === "-") return false;
   const m = dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
   if (!m) return false;
   const dt = new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
   dt.setHours(0, 0, 0, 0);
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   return dt < hoje;
 }
 
-export async function GET() {
+function inscricaoEncerradaHaMuito(inscricaoAte: string, hoje: Date, diasMax = 90): boolean {
+  if (!inscricaoAte || inscricaoAte === "Ver edital" || inscricaoAte === "-") return false;
+  const m = inscricaoAte.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return false;
+  const dt = new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+  dt.setHours(0, 0, 0, 0);
+  const diasPassados = (hoje.getTime() - dt.getTime()) / 86400000;
+  return diasPassados > diasMax;
+}
+
+export async function GET(req: Request) {
   const sb = getSupabase();
   if (!sb) {
     return NextResponse.json({ ok: false, error: "Supabase não configurado" }, { status: 503 });
   }
 
-  // 1. Lê o cache atual
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const { searchParams } = new URL(req.url);
+  const soDiagnostico = searchParams.get("diagnostico") === "1";
+
   const { data, error } = await sb
     .from("cache_concursos")
     .select("dados, atualizado")
@@ -37,21 +44,47 @@ export async function GET() {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ ok: false, error: "Cache não encontrado" }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "Cache não encontrado — chave: " + CACHE_KEY }, { status: 404 });
   }
 
   const concursosAntes: Concurso[] = data.dados?.concursos ?? [];
 
-  // 2. Filtra inválidos
+  // Diagnóstico completo de cada concurso
+  const diagnostico = concursosAntes.map(c => ({
+    cargo: c.cargo,
+    orgao: c.orgao,
+    status: c.status,
+    inscricaoAte: c.inscricaoAte,
+    diasRestantes: c.diasRestantes,
+    dataProva: c.dataProva,
+    nivel: c.nivel,
+    provaPassou: provaPassou(c.dataProva, hoje),
+    inscricaoVencidaHaMuito: inscricaoEncerradaHaMuito(c.inscricaoAte, hoje),
+    motivo: provaPassou(c.dataProva, hoje)
+      ? "REMOVER: prova passou"
+      : c.status === "Encerrado"
+        ? "REMOVER: encerrado"
+        : inscricaoEncerradaHaMuito(c.inscricaoAte, hoje) && c.dataProva === "-"
+          ? "REMOVER: inscrição encerrada há mais de 90 dias sem data de prova"
+          : "MANTER",
+  }));
+
+  if (soDiagnostico) {
+    return NextResponse.json({ total: concursosAntes.length, atualizado: data.atualizado, diagnostico });
+  }
+
   const removidos: string[] = [];
   const concursosDepois = concursosAntes.filter(c => {
-    if (provaPassou(c.dataProva)) {
+    if (provaPassou(c.dataProva, hoje)) {
       removidos.push(`${c.cargo} - ${c.orgao} (prova: ${c.dataProva})`);
       return false;
     }
-    // Remove também se status Encerrado
     if (c.status === "Encerrado") {
       removidos.push(`${c.cargo} - ${c.orgao} (status: Encerrado)`);
+      return false;
+    }
+    if (inscricaoEncerradaHaMuito(c.inscricaoAte, hoje) && c.dataProva === "-") {
+      removidos.push(`${c.cargo} - ${c.orgao} (inscrição vencida há >90 dias, sem data de prova)`);
       return false;
     }
     return true;
@@ -62,10 +95,10 @@ export async function GET() {
       ok: true,
       mensagem: "Nenhum concurso inválido encontrado no cache",
       total: concursosAntes.length,
+      diagnostico,
     });
   }
 
-  // 3. Salva de volta sem os inválidos
   const atualizadoEm = new Date().toISOString();
   const { error: saveError } = await sb.from("cache_concursos").upsert({
     chave:      CACHE_KEY,
@@ -78,9 +111,9 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    ok:       true,
-    antes:    concursosAntes.length,
-    depois:   concursosDepois.length,
+    ok: true,
+    antes: concursosAntes.length,
+    depois: concursosDepois.length,
     removidos,
     atualizadoEm,
   });
