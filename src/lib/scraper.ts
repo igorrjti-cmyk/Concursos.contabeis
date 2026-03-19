@@ -533,6 +533,25 @@ function extrairCargosContabeisDoEdital(texto: string): string[] {
   const cargos: string[] = [];
   const linhas = texto.split(/\n/).map(l => l.trim()).filter(Boolean);
 
+  // Busca rápida por menções diretas de cargos contábeis no texto
+  // Ex: "vagas para Contador" / "cargo de Técnico em Contabilidade"
+  const mencoesDiretas = [
+    /\b(Contador(?:a)?)\b/gi,
+    /\b(T[eé]cnico\s+em\s+Contabilidade)\b/gi,
+    /\b(Auditor(?:\s+(?:Fiscal|Interno|de\s+Controle))?)\b/gi,
+    /\b(Analista\s+(?:de\s+)?Cont[aá]b(?:il|ilidade))\b/gi,
+  ];
+  for (const re of mencoesDiretas) {
+    const matches = [...texto.matchAll(re)];
+    for (const m of matches) {
+      const c = m[1].trim().replace(/\s+/g, " ");
+      if (!cargos.some(x => x.toLowerCase() === c.toLowerCase())) {
+        cargos.push(c);
+      }
+    }
+  }
+  if (cargos.length > 0) return cargos.slice(0, 10);
+
   // Padrões de linhas que listam cargos em editais
   // Ex: "Contador ...... 1 vaga ...... R$ 5.000"
   // Ex: "CARGO: Técnico em Contabilidade"
