@@ -50,6 +50,9 @@ const VAGAS_URLS = [
   "/vagas/auditor-fiscal",
   "/vagas/fiscal-de-tributos",
   "/vagas/contador-municipal",
+  "/vagas/contador-publico",
+  "/vagas/auditor-de-controle-interno",
+  "/vagas/analista-de-controle-interno",
 ];
 
 // Nota: o PCI Concursos não possui seção separada para concursos aguardando prova.
@@ -827,13 +830,33 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const bloco     = linhasGeral.slice(idxOrgao, idxOrgao + 5);
     const blocoTexto = bloco.join(" ");
 
+    // Formato 1: "X vagas até R$ Y" (mais comum)
     const vagasMatch = blocoTexto.match(
       /(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+at[eé]\s+R\$\s*([\d.,]+)/i
     );
-    if (!vagasMatch) continue;
 
-    const vagasStr   = vagasMatch[1].replace(/\s+/g, " ").trim();
-    const salarioStr = "R$ " + vagasMatch[2];
+    // Formato 2: "Vários Cargos ... até R$ Y" (concursos com múltiplos cargos)
+    // Ex: "Vários Cargos Médio / Superior · 25/05 a 25/06/2026 · até R$ 7.210,35"
+    const vagasMatchVarios = !vagasMatch
+      ? blocoTexto.match(/at[eé]\s+R\$\s*([\d.,]+)/i)
+      : null;
+
+    // Formato 3: apenas salário sem vagas explícitas
+    const salarioSoMatch = (!vagasMatch && !vagasMatchVarios)
+      ? blocoTexto.match(/R\$\s*([\d.,]+)/i)
+      : null;
+
+    if (!vagasMatch && !vagasMatchVarios && !salarioSoMatch) continue;
+
+    const vagasStr = vagasMatch
+      ? vagasMatch[1].replace(/\s+/g, " ").trim()
+      : "Vários Cargos";
+    const salarioNum = vagasMatch
+      ? vagasMatch[2]
+      : vagasMatchVarios
+        ? vagasMatchVarios[1]
+        : salarioSoMatch![1];
+    const salarioStr = "R$ " + salarioNum;
 
     // Cargo
     let cargo = cargoDoTitle ?? "";
@@ -1050,7 +1073,7 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
 
   if (brutos.length === 0) return getFallbackData();
 
-  const LIMITE_DETALHE = 40; // busca detalhes dos primeiros 40 (aumentado para cobrir cargos genéricos)
+  const LIMITE_DETALHE = 60; // busca detalhes dos primeiros 60
   const completos: Concurso[] = [];
 
   for (let i = 0; i < brutos.length; i++) {
