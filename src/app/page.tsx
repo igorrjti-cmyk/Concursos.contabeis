@@ -571,17 +571,6 @@ function HomeContent() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {process.env.NODE_ENV === "development" && (
-            <>
-              <button onClick={runDebug} disabled={debugging} title="Logs no console F12" style={{
-                background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.2)",
-                color: "#A78BFA", borderRadius: 10, padding: "8px 13px",
-                fontSize: 11, fontWeight: 700, cursor: debugging ? "not-allowed" : "pointer",
-                display: "flex", alignItems: "center", gap: 5, opacity: debugging ? .6 : 1,
-              }}>
-                <span style={{ display: "inline-block", animation: debugging ? "spin .8s linear infinite" : "none" }}>🔍</span>
-                {debugging ? "Analisando..." : "Debug F12"}
-              </button>
               <button onClick={clearCache} disabled={clearing} style={{
                 background: "rgba(255,75,75,.1)", border: "1px solid rgba(255,75,75,.2)",
                 color: "#FF4B4B", borderRadius: 10, padding: "8px 13px",
@@ -591,8 +580,6 @@ function HomeContent() {
                 <span style={{ display: "inline-block", animation: clearing ? "spin .8s linear infinite" : "none" }}>🗑</span>
                 {clearing ? "Limpando..." : "Limpar cache"}
               </button>
-            </>
-          )}
           <button onClick={() => fetchConcursos(true)} disabled={refreshing} style={{
             background: refreshing ? "rgba(0,200,150,.15)" : "linear-gradient(135deg,#00C896,#00A87A)",
             color: refreshing ? "#00C896" : "#002D1F",
