@@ -40,7 +40,7 @@ export function statusDisplay(s: string): string {
 const BASE_URL = "https://www.pciconcursos.com.br";
 
 // URLs de vagas ativas (inscrições abertas e previstos)
-const VAGAS_URLS = [
+export const VAGAS_URLS = [
   "/vagas/contador",
   "/vagas/contadora",
   "/vagas/contabilidade",
@@ -763,7 +763,7 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
 
 // ─── Scraping da listagem ─────────────────────────────────────────────────────
 
-async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
+export async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
   const html = await fetchComTimeout(BASE_URL + url);
   if (!html) return [];
 
@@ -933,7 +933,7 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
 
 // ─── Scraping de detalhe ──────────────────────────────────────────────────────
 
-async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
+export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   const empty: DetalhesEdital = {
     dataProva: "-", dataResultado: "-", banca: "-",
     linkEdital: "", cargosContabeis: [], requisito: "-",
