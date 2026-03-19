@@ -103,10 +103,19 @@ export async function GET(req: Request) {
 
       if (det.ehProcessoSeletivo) continue;
 
-      // Filtra "Vários Cargos" sem cargo contábil no edital
+      // "Vários Cargos" — passa sempre que veio de URL contábil (urlPath já é /vagas/contador etc.)
+      // O filtro fino já foi feito pelo scrapeListagem + scrapeDetalhe do scraper.ts
+      // Aqui só rejeitamos se NÃO tem cargo contábil E o título não menciona nenhuma área contábil
+      const CONTABIL_KW = ["contador", "contabil", "contábil", "fiscal", "auditor", "tribut", "contabilidade"];
+      const tituloOuCargo = ((item.cargo || "") + " " + (item.linkNoticia || "")).toLowerCase();
+      const temKwContabil = CONTABIL_KW.some(kw => tituloOuCargo.includes(kw));
+      // Concursos de URLs contábeis sempre passam (urlPath = /vagas/contador, etc.)
+      const urlEContabil = CONTABIL_KW.some(kw => urlPath.includes(kw));
       if (
         (item.cargo === "Vários Cargos" || item.cargo === "varios cargos") &&
-        det.cargosContabeis.length === 0
+        det.cargosContabeis.length === 0 &&
+        !temKwContabil &&
+        !urlEContabil
       ) continue;
 
       const key = item.id || slugify((item.cargo || "") + (item.orgao || ""));
