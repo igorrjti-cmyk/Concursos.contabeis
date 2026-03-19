@@ -181,6 +181,7 @@ function HomeContent() {
   const [historico, setHistorico]       = useState<PostHistorico[]>([]);
   const [loading, setLoading]           = useState(true);
   const [refreshing, setRefreshing]     = useState(false);
+  const [loteProgresso, setLoteProgresso] = useState<{ atual: number; total: number } | null>(null);
   const [filter, setFilter]             = useState<FilterStatus>(
     (searchParams.get("status") as FilterStatus) ?? "todos"
   );
@@ -274,32 +275,71 @@ function HomeContent() {
     }
   };
 
+  const TOTAL_LOTES = 16; // deve bater com VAGAS_URLS.length no scraper.ts
+
   const fetchConcursos = useCallback(async (forceRefresh = false) => {
     forceRefresh ? setRefreshing(true) : setLoading(true);
     setErro(null);
+
     try {
-      const res  = await fetch("/api/concursos" + (forceRefresh ? "?refresh=1" : ""));
-      const data = await res.json();
-      if (data.ok) {
-        const c = data.concursos as Concurso[];
-        setConcursos(c);
-        setFromCache(data.fromCache ?? false);
-        setAtualizadoEm(new Date(data.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }));
-        console.group(`Concursos Contábeis ${data.fromCache ? "[CACHE]" : "[AO VIVO]"}`);
-        console.log("Total:", c.length, "| Atualizado:", new Date(data.atualizadoEm).toLocaleString("pt-BR"));
-        const porStatus = c.reduce((acc: Record<string, number>, x) => { acc[x.status] = (acc[x.status] || 0) + 1; return acc; }, {});
-        console.log("Por status:", porStatus);
-        console.table(c.slice(0, 15).map(x => ({ cargo: x.cargo, orgao: x.orgao, estado: x.estado, status: x.status, dias: x.diasRestantes, salario: x.salario })));
-        console.groupEnd();
-      } else {
-        setErro("Não foi possível carregar os concursos. Tente novamente.");
+      // Sem forceRefresh: tenta cache normal primeiro
+      if (!forceRefresh) {
+        const res  = await fetch("/api/concursos");
+        const data = await res.json();
+        if (data.ok) {
+          const c = data.concursos as Concurso[];
+          setConcursos(c);
+          setFromCache(data.fromCache ?? false);
+          setAtualizadoEm(new Date(data.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }));
+          console.group("Concursos Contábeis [CACHE]");
+          console.log("Total:", c.length);
+          console.groupEnd();
+          return;
+        }
       }
+
+      // forceRefresh = true → chama lotes em sequência
+      setLoteProgresso({ atual: 0, total: TOTAL_LOTES });
+
+      for (let lote = 0; lote < TOTAL_LOTES; lote++) {
+        const isFim  = lote === TOTAL_LOTES - 1;
+        const params = new URLSearchParams({ lote: String(lote), ...(isFim ? { fim: "1" } : {}) });
+
+        try {
+          const res  = await fetch(`/api/scrape-lote?${params}`);
+          const data = await res.json();
+          setLoteProgresso({ atual: lote + 1, total: TOTAL_LOTES });
+
+          if (!data.ok) continue;
+
+          // Após cada lote, atualiza a lista com os dados acumulados
+          if (data.totalAcumulado > 0) {
+            const res2  = await fetch("/api/concursos");
+            const data2 = await res2.json();
+            if (data2.ok) {
+              const c = data2.concursos as Concurso[];
+              setConcursos(c);
+              setFromCache(false);
+              setAtualizadoEm(new Date(data2.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }));
+              console.log(`[Lote ${lote + 1}/${TOTAL_LOTES}] ${data.novosNesteLote} novos | Total: ${c.length}`);
+            }
+          }
+
+          if (data.fim) break;
+        } catch (e) {
+          console.warn(`[Lote ${lote + 1}] Falhou, continuando...`, e);
+          setLoteProgresso({ atual: lote + 1, total: TOTAL_LOTES });
+          continue;
+        }
+      }
+
     } catch (e) {
       console.error("Erro ao carregar concursos:", e);
       setErro("Falha na conexão com o servidor. Verifique sua internet e tente novamente.");
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoteProgresso(null);
     }
   }, []);
 
@@ -589,7 +629,11 @@ function HomeContent() {
             display: "flex", alignItems: "center", gap: 5,
           }}>
             <span style={{ display: "inline-block", animation: refreshing ? "spin .8s linear infinite" : "none" }}>↻</span>
-            {refreshing ? "Buscando..." : "Atualizar"}
+            {refreshing
+              ? loteProgresso
+                ? `Lote ${loteProgresso.atual}/${loteProgresso.total}...`
+                : "Buscando..."
+              : "Atualizar"}
           </button>
         </div>
       </header>
