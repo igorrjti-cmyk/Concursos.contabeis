@@ -503,6 +503,18 @@ function ehConcursoContabil(
   // Rejeita se title é claramente outra área
   if (AREAS_EXCLUIDAS_TITLE.some(t => titLow.includes(t))) return false;
 
+  // Rejeita conselhos de outras profissões (CRP, CRM, CREA, CFO, etc.)
+  const orgaoLow = orgao.toLowerCase();
+  const conselhoNaoContabil = [
+    "psicologia", "medicina", "enfermagem", "odontologia", "farmacia",
+    "farmácia", "engenharia", "arquitetura", "biologia", "fisioterapia",
+    "nutrição", "nutricao", "veterinaria", "veterinária", "advocacia",
+    "administracao", "administração",
+  ];
+  // Só rejeita se for um CONSELHO (CRP, CRM, etc.) de área não-contábil
+  const ehConselho = /(crp|crm|crea|cfo|cfn|cfbio|cfft|cff|cfmv|cfp|oab)/i.test(orgao);
+  if (ehConselho && conselhoNaoContabil.some(kw => orgaoLow.includes(kw))) return false;
+
   // Aceita se cargo tem palavra-chave direta
   const cargoLow = cargo.toLowerCase();
   if (CARGO_CONTABIL_KW.some(kw => cargoLow.includes(kw))) return true;
