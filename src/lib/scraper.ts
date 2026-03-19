@@ -839,51 +839,37 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const bloco     = linhasGeral.slice(idxOrgao, idxOrgao + 5);
     const blocoTexto = bloco.join(" ");
 
-    // Formato 1: "X vagas até R$ Y" (mais comum)
+    // O PCI une vagas+salário+cargo em uma linha sem espaços:
+    // "10 vagas até R$ 5.409,87Vários CargosMédio / Superior"
+    // "4 vagas até R$ 6.093,47Contador, EconomistaSuperior"
+    // "3 vagas + CR até R$ 2.043,00Auxiliar de Serviços Gerais, ContadorFundamental"
     const vagasMatch = blocoTexto.match(
-      /(\d+\s+vagas?\s*(?:\+\s*CR)?|cadastro\s+reserva)\s+at[eé]\s+R\$\s*([\d.,]+)/i
+      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)\s+at[eé]\s+R\$\s*([\d.,]+)/i
     );
 
-    // Formato 2: "Vários Cargos ... até R$ Y" (concursos com múltiplos cargos)
-    // Ex: "Vários Cargos Médio / Superior · 25/05 a 25/06/2026 · até R$ 7.210,35"
-    const vagasMatchVarios = !vagasMatch
-      ? blocoTexto.match(/at[eé]\s+R\$\s*([\d.,]+)/i)
-      : null;
+    if (!vagasMatch) continue; // linha sem formato de vagas — não é entrada válida
 
-    // Formato 3: apenas salário sem vagas explícitas
-    const salarioSoMatch = (!vagasMatch && !vagasMatchVarios)
-      ? blocoTexto.match(/R\$\s*([\d.,]+)/i)
-      : null;
+    const vagasStr   = vagasMatch[1].replace(/\s+/g, " ").trim();
+    const salarioStr = "R$ " + vagasMatch[2];
 
-    if (!vagasMatch && !vagasMatchVarios && !salarioSoMatch) continue;
+    // Extrai o cargo da mesma linha — vem colado após o salário
+    // Ex: "4 vagas até R$ 6.093,47Contador, EconomistaSuperior"
+    //                              ^^^^^^^^^^^^^^^^ cargo aqui
+    const linhaVagas = blocoTexto.split("\n")
+      .find(l => /(\d+\s+vagas?|cadastro\s+reserva).*at[eé]\s+R\$/i.test(l)) ?? "";
+    const cargoNaLinha = (() => {
+      // Remove "X vagas até R$ Y.YYY,YY" do início
+      const semVagas = linhaVagas.replace(
+        /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)\s+at[eé]\s+R\$\s*[\d.,]+/i, ""
+      ).trim();
+      // O que resta antes do nível (Fundamental/Médio/Superior/Técnico) é o cargo
+      const mCargo = semVagas.match(/^(.+?)(?:Fundamental|M[eé]dio|Superior|T[eé]cnico|$)/i);
+      const c = mCargo?.[1]?.trim() ?? "";
+      return c.length > 1 && c.length < 100 ? c : "";
+    })();
 
-    const vagasStr = vagasMatch
-      ? vagasMatch[1].replace(/\s+/g, " ").trim()
-      : "Vários Cargos";
-    const salarioNum = vagasMatch
-      ? vagasMatch[2]
-      : vagasMatchVarios
-        ? vagasMatchVarios[1]
-        : salarioSoMatch![1];
-    const salarioStr = "R$ " + salarioNum;
-
-    // Cargo
-    let cargo = cargoDoTitle ?? "";
-    if (!cargo) {
-      const linhaColaps = bloco.find(l => /at[eé]\s+R\$\s*[\d.,]+/i.test(l)) ?? "";
-      if (linhaColaps) {
-        const afterSalary = linhaColaps.replace(/^.*?R\$\s*[\d.,]+/i, "").trim();
-        const mC = afterSalary.match(/^(.+?)(?=\s*(?:Fundamental|M[eé]dio|Superior|T[eé]cnico))/i);
-        if (mC && mC[1].trim().length > 1) cargo = mC[1].trim();
-      }
-    }
-    if (!cargo) {
-      const vagasLinha = bloco.find(l => /(\d+\s+vagas?|cadastro\s+reserva)\s+at[eé]\s+R\$/i.test(l));
-      const idxV = vagasLinha ? bloco.indexOf(vagasLinha) : -1;
-      const prox = idxV >= 0 ? (bloco[idxV + 1] ?? "") : "";
-      const ehNivel = /^(Fundamental|M[eé]dio|Superior|T[eé]cnico)/i.test(prox);
-      cargo = !ehNivel && prox.length > 1 ? prox : "Vários Cargos";
-    }
+    // Cargo — prioridade: 1) extraído da linha de vagas, 2) do título, 3) fallback
+    let cargo = cargoNaLinha || cargoDoTitle || "Vários Cargos";
 
     // Nível
     const nivelMatch = blocoTexto.match(
@@ -892,7 +878,8 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const nivelRaw = nivelMatch ? nivelMatch[1] : "";
 
     // Período de inscrição
-    const periodoMatch   = blocoTexto.match(/(\d{2}\/\d{2}(?:\/\d{4})?)\s+a\s*(\d{2}\/\d{2}\/\d{4})/);
+    // Data também vem sem espaço: "25/05 a25/06/2026" ou "04/05 a08/06/2026"
+    const periodoMatch   = blocoTexto.match(/(\d{2}\/\d{2}(?:\/\d{4})?)\s*a\s*(\d{2}\/\d{2}\/\d{4})/);
     const dataUnicaMatch = blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
 
     let inscricao    = "-";
@@ -908,25 +895,11 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
       inscricaoAte = dataUnicaMatch[1];
     }
 
-    // Filtro contábil — pré-check na listagem (sem texto do edital ainda)
+    // Filtro contábil — verifica cargo da linha, título e orgão
     const nivelSuperior = nivelRaw.toLowerCase().includes("superior");
     const cargoGenerico = CARGO_GENERICO_CONTABIL_KW.some(kw => cargo.toLowerCase().includes(kw));
     const passaParaDetalhe = nivelSuperior && cargoGenerico;
-    // Aceita se: cargo contábil direto OU título lista cargo contábil OU cargo genérico nível superior
     if (!ehConcursoContabil(cargo, title, orgao) && !passaParaDetalhe && !titleTemContabil) continue;
-    // Se título tem cargo contábil mas cargo extraído é genérico, usa o cargo do título
-    if (titleTemContabil && !ehConcursoContabil(cargo, title, orgao)) {
-      // Extrai os cargos contábeis do título
-      const cargosNoTitulo = title.split(/,|\se\s/).map(p => p.trim()).filter(p =>
-        CARGO_CONTABIL_KW.some(kw => p.toLowerCase().includes(kw))
-      );
-      if (cargosNoTitulo.length > 0) {
-        cargo = cargosNoTitulo.map(c => {
-          // Remove sufixo " - Órgão - UF" se presente
-          return c.replace(/\s+-\s+.+$/, "").trim();
-        }).join(", ");
-      }
-    }
 
     items.push({
       id:            slugify(cargo + "-" + orgao),
