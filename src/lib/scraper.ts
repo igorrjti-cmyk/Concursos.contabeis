@@ -819,9 +819,11 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
 
     const cargoDoTitle = (() => {
       // Tenta extrair cargo do padrão "para Cargo em Órgão"
-      const m = title.match(/\b(?:para|ao cargo de|vagas?\s+(?:de|para))\s+(.{3,80}?)(?:\s+em\s+|\s+com\s+|\s+no\s+|\s+na\s+|\s+sob\s+|$)/i);
+      // Ex: "publica edital para Contador e Economista" → "Contador e Economista"
+      // Ex: "abre concurso para o cargo de Contador" → "Contador" (sem o "de")
+      const m = title.match(/\b(?:para\s+(?:o\s+cargo\s+de\s+|os?\s+cargos?\s+de\s+)?|ao\s+cargo\s+de\s+|vagas?\s+(?:de\s+|para\s+))(.{3,80}?)(?:\s+e\s+(?:agente|analista|assistente|auxiliar|procurad|advogad)|\s+em\s+|\s+com\s+|\s+no\s+|\s+na\s+|\s+sob\s+|$)/i);
       if (m) {
-        const c = m[1].trim().replace(/\s+$/, "");
+        const c = m[1].trim().replace(/\s+$/, "").replace(/^(de|do|da|e)\s+/i, "");
         if (c.length >= 3 && c.length < 80
           && !c.toLowerCase().includes("concurso")
           && !c.toLowerCase().includes("selecao")) return c;
@@ -836,7 +838,7 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const idxOrgao = linhasGeral.findIndex(l => l === orgao);
     if (idxOrgao === -1) continue;
 
-    const bloco     = linhasGeral.slice(idxOrgao, idxOrgao + 5);
+    const bloco     = linhasGeral.slice(idxOrgao, idxOrgao + 8);
     const blocoTexto = bloco.join(" ");
 
     // O PCI une vagas+salário+cargo em UMA linha sem espaços:
@@ -850,8 +852,10 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
 
     if (!linhaVagas) continue; // sem linha de vagas — não é entrada válida
 
+    // Usa regex robusto sem depender do encoding de "até"
+    // [^R\d]* captura qualquer coisa entre "vagas" e "R$" (inclui "até", "a", etc.)
     const vagasMatch = linhaVagas.match(
-      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)\s+at[eé]\s+R\$\s*([\d.,]+)/i
+      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)[^R\d]*R\$\s*([\d.,]+)/i
     );
     if (!vagasMatch) continue;
 
@@ -859,9 +863,8 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const salarioStr = "R$ " + vagasMatch[2];
 
     // Cargo vem colado após o número do salário na MESMA linha
-    // Remove "X vagas até R$ 9.999,99" e extrai o que vem antes do nível
     const semVagas = linhaVagas.replace(
-      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)\s+at[eé]\s+R\$\s*[\d.,]+/i, ""
+      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)[^R\d]*R\$\s*[\d.,]+/i, ""
     ).trim();
     // O que resta: "Vários CargosMédio / Superior" ou "Contador, EconomistaSuperior"
     const mCargo = semVagas.match(/^(.+?)(?=Fundamental|M[eé]dio|Superior|T[eé]cnico|$)/i);
@@ -881,9 +884,12 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const nivelRaw = nivelMatch ? nivelMatch[1] : "";
 
     // Período de inscrição
-    // Data também vem sem espaço: "25/05 a25/06/2026" ou "04/05 a08/06/2026"
-    const periodoMatch   = blocoTexto.match(/(\d{2}\/\d{2}(?:\/\d{4})?)\s*a\s*(\d{2}\/\d{2}\/\d{4})/);
-    const dataUnicaMatch = blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
+    // Data vem sem espaço: "25/05 a25/06/2026" — busca na linha específica de data
+    const linhaData = bloco.find(l => /\d{2}\/\d{2}.*\d{2}\/\d{2}\/\d{4}/.test(l)) ?? "";
+    const periodoMatch   = linhaData.match(/(\d{2}\/\d{2}(?:\/\d{4})?)\s*a\s*(\d{2}\/\d{2}\/\d{4})/) ||
+                           blocoTexto.match(/(\d{2}\/\d{2}(?:\/\d{4})?)\s*a\s*(\d{2}\/\d{2}\/\d{4})/);
+    const dataUnicaMatch = linhaData.match(/(\d{2}\/\d{2}\/\d{4})/) ||
+                           blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
 
     let inscricao    = "-";
     let inscricaoAte = "Ver edital";
