@@ -839,36 +839,39 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const bloco     = linhasGeral.slice(idxOrgao, idxOrgao + 5);
     const blocoTexto = bloco.join(" ");
 
-    // O PCI une vagas+salário+cargo em uma linha sem espaços:
-    // "10 vagas até R$ 5.409,87Vários CargosMédio / Superior"
-    // "4 vagas até R$ 6.093,47Contador, EconomistaSuperior"
-    // "3 vagas + CR até R$ 2.043,00Auxiliar de Serviços Gerais, ContadorFundamental"
-    const vagasMatch = blocoTexto.match(
+    // O PCI une vagas+salário+cargo em UMA linha sem espaços:
+    // "[94] 10 vagas até R$ 5.409,87Vários CargosMédio / Superior"
+    // "[102] 4 vagas até R$ 6.093,47Contador, EconomistaSuperior"
+    // "[linha] 3 vagas + CR até R$ 2.043,00Auxiliar de Serviços Gerais, ContadorFundamental"
+    // Procura a linha específica que contém "vagas até R$"
+    const linhaVagas = bloco.find(l =>
+      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva).*at[eé]\s+R\$/i.test(l)
+    ) ?? "";
+
+    if (!linhaVagas) continue; // sem linha de vagas — não é entrada válida
+
+    const vagasMatch = linhaVagas.match(
       /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)\s+at[eé]\s+R\$\s*([\d.,]+)/i
     );
-
-    if (!vagasMatch) continue; // linha sem formato de vagas — não é entrada válida
+    if (!vagasMatch) continue;
 
     const vagasStr   = vagasMatch[1].replace(/\s+/g, " ").trim();
     const salarioStr = "R$ " + vagasMatch[2];
 
-    // Extrai o cargo da mesma linha — vem colado após o salário
-    // Ex: "4 vagas até R$ 6.093,47Contador, EconomistaSuperior"
-    //                              ^^^^^^^^^^^^^^^^ cargo aqui
-    const linhaVagas = blocoTexto.split("\n")
-      .find(l => /(\d+\s+vagas?|cadastro\s+reserva).*at[eé]\s+R\$/i.test(l)) ?? "";
+    // Cargo vem colado após o número do salário na MESMA linha
+    // Remove "X vagas até R$ 9.999,99" e extrai o que vem antes do nível
+    const semVagas = linhaVagas.replace(
+      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)\s+at[eé]\s+R\$\s*[\d.,]+/i, ""
+    ).trim();
+    // O que resta: "Vários CargosMédio / Superior" ou "Contador, EconomistaSuperior"
+    const mCargo = semVagas.match(/^(.+?)(?=Fundamental|M[eé]dio|Superior|T[eé]cnico|$)/i);
     const cargoNaLinha = (() => {
-      // Remove "X vagas até R$ Y.YYY,YY" do início
-      const semVagas = linhaVagas.replace(
-        /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)\s+at[eé]\s+R\$\s*[\d.,]+/i, ""
-      ).trim();
-      // O que resta antes do nível (Fundamental/Médio/Superior/Técnico) é o cargo
-      const mCargo = semVagas.match(/^(.+?)(?:Fundamental|M[eé]dio|Superior|T[eé]cnico|$)/i);
-      const c = mCargo?.[1]?.trim() ?? "";
-      return c.length > 1 && c.length < 100 ? c : "";
+      const c = mCargo?.[1]?.trim().replace(/,$/, "").trim() ?? "";
+      // Rejeita se for só "Vários Cargos" ou vazio
+      return c.length > 1 && c.length < 100 && !/^v[aá]rios\s+cargos$/i.test(c) ? c : "";
     })();
 
-    // Cargo — prioridade: 1) extraído da linha de vagas, 2) do título, 3) fallback
+    // Cargo — prioridade: 1) extraído da linha de vagas, 2) do título
     let cargo = cargoNaLinha || cargoDoTitle || "Vários Cargos";
 
     // Nível
