@@ -8,7 +8,7 @@ import type { Concurso } from "@/lib/scraper";
 
 // Necessário: sem isso o Vercel corta o scraping em 10s (timeout padrão)
 export const runtime     = "nodejs";
-export const maxDuration = 60; // 60s — suficiente para scraping + PDFs
+export const maxDuration = 300; // 60s — suficiente para scraping + PDFs
 
 // Reclassifica status baseado na data atual — corrige cache desatualizado
 function reclassificarCache(concursos: Concurso[]): Concurso[] {
