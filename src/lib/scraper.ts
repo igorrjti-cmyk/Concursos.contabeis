@@ -846,17 +846,16 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     // "[102] 4 vagas até R$ 6.093,47Contador, EconomistaSuperior"
     // "[linha] 3 vagas + CR até R$ 2.043,00Auxiliar de Serviços Gerais, ContadorFundamental"
     // Procura a linha específica que contém "vagas ... R$"
-    // Usa [^R\d]* para evitar dependência de encoding do caractere "é" em "até"
+    // Usa [$] para o cifrão e [^R]+ para evitar problemas de encoding/escape
     const linhaVagas = bloco.find(l =>
-      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)[^R\d]*R\$/i.test(l)
+      /(\d+\s+vagas?(?:\s*[+]\s*CR)?|cadastro\s+reserva)[^R]+R[$]/i.test(l)
     ) ?? "";
 
     if (!linhaVagas) continue; // sem linha de vagas — não é entrada válida
 
-    // Usa regex robusto sem depender do encoding de "até"
-    // [^R\d]* captura qualquer coisa entre "vagas" e "R$" (inclui "até", "a", etc.)
+    // Usa [^R]+ e [$] para robustez máxima contra encoding
     const vagasMatch = linhaVagas.match(
-      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)[^R\d]*R\$\s*([\d.,]+)/i
+      /(\d+\s+vagas?(?:\s*[+]\s*CR)?|cadastro\s+reserva)[^R]+R[$]\s*([\d.,]+)/i
     );
     if (!vagasMatch) continue;
 
@@ -865,7 +864,7 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
 
     // Cargo vem colado após o número do salário na MESMA linha
     const semVagas = linhaVagas.replace(
-      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)[^R\d]*R\$\s*[\d.,]+/i, ""
+      /(\d+\s+vagas?(?:\s*[+]\s*CR)?|cadastro\s+reserva)[^R]+R[$]\s*[\d.,]+/i, ""
     ).trim();
     // O que resta: "Vários CargosMédio / Superior" ou "Contador, EconomistaSuperior"
     const mCargo = semVagas.match(/^(.+?)(?=Fundamental|M[eé]dio|Superior|T[eé]cnico|$)/i);
