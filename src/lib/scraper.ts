@@ -526,17 +526,10 @@ function ehConcursoContabil(
   // Rejeita se title é claramente outra área
   if (AREAS_EXCLUIDAS_TITLE.some(t => titLow.includes(t))) return false;
 
-  // Rejeita conselhos de outras profissões (CRP, CRM, CREA, CFO, etc.)
   const orgaoLow = orgao.toLowerCase();
-  const conselhoNaoContabil = [
-    "psicologia", "medicina", "enfermagem", "odontologia", "farmacia",
-    "farmácia", "engenharia", "arquitetura", "biologia", "fisioterapia",
-    "nutrição", "nutricao", "veterinaria", "veterinária", "advocacia",
-    "administracao", "administração",
-  ];
-  // Só rejeita se for um CONSELHO (CRP, CRM, etc.) de área não-contábil
-  const ehConselho = /(crp|crm|crea|cfo|cfn|cfbio|cfft|cff|cfmv|cfp|oab)/i.test(orgao);
-  if (ehConselho && conselhoNaoContabil.some(kw => orgaoLow.includes(kw))) return false;
+  // NÃO filtra por órgão — qualquer órgão pode abrir concurso para Contador.
+  // Ex: CAU, CREA, OAB, CRM — todos podem ter cargos contábeis internos.
+  // O filtro é sempre pelo CARGO, nunca pelo órgão.
 
   // Aceita se cargo tem palavra-chave direta
   const cargoLow = cargo.toLowerCase();
@@ -1174,6 +1167,18 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
 
     // Descarta se o texto da notícia indica processo seletivo
     if (det.ehProcessoSeletivo) continue;
+
+    // Descarta se a data de prova já passou (ano anterior ao atual)
+    const anoAtualCheck2 = new Date().getFullYear();
+    if (det.dataProva && det.dataProva !== "-") {
+      const mProva = det.dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (mProva) {
+        const anoProva = parseInt(mProva[3]);
+        const diaProva = new Date(anoProva, parseInt(mProva[2]) - 1, parseInt(mProva[1]));
+        const hoje2 = new Date(); hoje2.setHours(0,0,0,0);
+        if (diaProva < hoje2 && anoProva <= anoAtualCheck2 - 1) continue; // prova de ano anterior
+      }
+    }
 
     // Segunda chance no filtro usando texto completo do edital (PDF já lido)
     const cargoFinal = item.cargo || "-";

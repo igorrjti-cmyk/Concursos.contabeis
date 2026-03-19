@@ -9,7 +9,7 @@
 //   ...
 //   GET /api/scrape-lote?lote=15&fim=1 → último lote, sinaliza conclusão
 //
-// O cache principal (concursos:v19) é atualizado a cada lote com merge dos
+// O cache principal (concursos:v20) é atualizado a cada lote com merge dos
 // resultados anteriores — o usuário já vê dados novos enquanto o resto carrega.
 
 import { NextResponse }                          from "next/server";
@@ -147,6 +147,19 @@ export async function GET(req: Request) {
 
       if (det.ehProcessoSeletivo) continue;
 
+      // Descarta se a data de prova já passou (ano anterior ao atual)
+      const anoLote = new Date().getFullYear();
+      const dataProvaFinal = det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-";
+      if (dataProvaFinal && dataProvaFinal !== "-") {
+        const mPv = dataProvaFinal.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (mPv) {
+          const anoPv = parseInt(mPv[3]);
+          const dtPv = new Date(anoPv, parseInt(mPv[2]) - 1, parseInt(mPv[1]));
+          const hojeL = new Date(); hojeL.setHours(0,0,0,0);
+          if (dtPv < hojeL && anoPv <= anoLote - 1) continue;
+        }
+      }
+
       // "Vários Cargos" — passa sempre que veio de URL contábil (urlPath já é /vagas/contador etc.)
       // O filtro fino já foi feito pelo scrapeListagem + scrapeDetalhe do scraper.ts
       // Aqui só rejeitamos se NÃO tem cargo contábil E o título não menciona nenhuma área contábil
@@ -183,10 +196,21 @@ export async function GET(req: Request) {
       // Descarta encerrados que vieram de /concursos/ sem prova futura
       if (statusFinal === "Encerrado") continue;
 
+      // Recalcula nível: cargos de Contador/Auditor são sempre Superior
+      const nivelContabil = (() => {
+        const cd = cargoDisplay.toLowerCase();
+        const ehSuperiorKw = ["contador", "contadora", "auditor", "analista contábil",
+          "analista contabil", "fiscal de tribut", "fiscal de rendas"].some(kw => cd.includes(kw));
+        if (ehSuperiorKw) return "Superior";
+        if (cd.includes("técnico em contabilidade") || cd.includes("tecnico em contabilidade")) return "Médio/Técnico";
+        return item.nivel || "Superior";
+      })();
+
       novos.push({
         ...item,
         id:             key,
         cargo:          cargoDisplay,
+        nivel:          nivelContabil,
         status:         statusFinal,
         banca:          det.banca !== "-" ? det.banca : item.banca ?? "-",
         dataProva:      det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-",

@@ -33,6 +33,17 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
       // Descarta concursos antigos — verifica todos os campos de data
       const anoAtual = hoje.getFullYear();
 
+      // Descarta imediatamente se dataProva está em ano anterior ao atual
+      if (c.dataProva && c.dataProva !== "-") {
+        const provaParts = c.dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+        if (provaParts) {
+          const anoProva = parseInt(provaParts[3]);
+          if (anoProva < anoAtual) {
+            return { ...c, status: "Encerrado" as const, diasRestantes };
+          }
+        }
+      }
+
       // Combina todos os campos de data disponíveis
       const todasDatas = [
         c.inscricao || "",
@@ -60,7 +71,22 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
 
       // Inscrições abertas → verifica se prazo passou
       if (status === "Inscricoes Abertas" && diasRestantes < 0) {
-        status = "Encerrado";
+        // Inscrições encerradas: verifica se há prova futura → Aguardando Prova
+        if (c.dataProva && c.dataProva !== "-") {
+          const [dp, mp, yp] = c.dataProva.split("/").map(Number);
+          if (!isNaN(dp) && !isNaN(mp) && !isNaN(yp)) {
+            const dtProva = new Date(yp, mp - 1, dp);
+            if (dtProva >= hoje) {
+              status = "Aguardando Prova"; // inscrição encerrou mas prova futura
+            } else {
+              status = "Encerrado"; // prova já passou
+            }
+          } else {
+            status = "Encerrado";
+          }
+        } else {
+          status = "Encerrado";
+        }
       }
 
       // Aguardando Prova → verifica datas do edital
@@ -82,14 +108,15 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
                   status = "Encerrado";
                 }
               } else {
+                // Prova passou, sem resultado cadastrado → encerrado
                 status = "Encerrado";
               }
             }
           }
         } else {
-          // Sem data de prova: descarta se inscrição encerrou há mais de 180 dias
-          // Evita concursos antigos sem cronograma aparecerem como "Previsto"
-          if (diasRestantes < -180) {
+          // Sem data de prova: descarta se inscrição encerrou há mais de 60 dias
+          // Reduzido de 180 para 60 para descartar mais rápido concursos sem cronograma
+          if (diasRestantes < -60) {
             status = "Encerrado";
           }
         }

@@ -59,6 +59,15 @@ const NIVEIS = ["Todos", "Superior", "Médio/Técnico", "Médio/Técnico/Superio
 
 const UFS = ["Todos","AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO","Nacional"];
 
+function nivelDisplay(cargo: string, nivel: string): string {
+  const c = cargo.toLowerCase();
+  const ehSuperior = ["contador", "contadora", "auditor", "analista contábil",
+    "analista contabil", "fiscal de tribut", "fiscal de rendas"].some(kw => c.includes(kw));
+  if (ehSuperior && nivel.includes("Superior")) return "Superior";
+  if ((c.includes("técnico em contabilidade") || c.includes("tecnico em contabilidade")) && nivel === "Médio/Técnico/Superior") return "Médio/Técnico";
+  return nivel;
+}
+
 function parseSalario(s: string): number {
   return parseFloat(s.replace("R$", "").replace(/\./g, "").replace(",", ".").trim()) || 0;
 }
@@ -400,13 +409,12 @@ function HomeContent() {
       if (filter !== "todos" && c.status !== filter) return false;
       if (estadoFiltro !== "Todos" && c.estado !== estadoFiltro) return false;
       if (nivelFiltro !== "Todos") {
-        // Filtro exato: "Superior" mostra apenas concursos de nível Superior (inclui Superior puro e Médio/Técnico/Superior)
-        // "Médio/Técnico" mostra apenas Médio/Técnico puro
-        // "Médio/Técnico/Superior" mostra apenas esse nível específico
+        // Usa nivelDisplay para normalizar o nível antes de filtrar
+        const nivelNorm = nivelDisplay(c.cargo, c.nivel);
         if (nivelFiltro === "Superior") {
-          if (!c.nivel.includes("Superior")) return false;
+          if (!nivelNorm.includes("Superior")) return false;
         } else {
-          if (c.nivel !== nivelFiltro) return false;
+          if (nivelNorm !== nivelFiltro) return false;
         }
       }
       if (buscaDebounced.trim()) {
@@ -862,7 +870,7 @@ function HomeContent() {
                       </div>
                       <div style={{ color: "#00C896", fontSize: 12, marginTop: 2, fontWeight: 600 }}>{c.orgao}</div>
                       <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, marginTop: 1 }} className="list-meta">
-                        {c.estado} · {c.nivel}{c.banca !== "-" ? " · " + c.banca : ""}
+                        {c.estado} · {nivelDisplay(c.cargo, c.nivel)}{c.banca !== "-" ? " · " + c.banca : ""}
                       </div>
                       {/* Cargos contábeis inline quando há múltiplos */}
                       {c.cargosContabeis && c.cargosContabeis.length > 1 && (

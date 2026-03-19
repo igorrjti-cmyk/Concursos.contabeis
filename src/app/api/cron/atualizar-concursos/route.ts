@@ -1,16 +1,13 @@
 // src/app/api/cron/atualizar-concursos/route.ts
-// Cron diário (06:00) — força atualização do cache de concursos
-// Configurado em vercel.json: "0 6 * * *"
-// Roda ANTES do cron de notificações (08:00) para garantir dados frescos
+// Cron diário (06:00) — chama /api/scrape-lote em sequência para atualizar o cache.
+// Usa o endpoint de lote em vez de scrapeAllConcursos() direto para não estourar timeout.
 
-import { NextResponse }       from "next/server";
-import { scrapeAllConcursos } from "@/lib/scraper";
-import { getSupabase }        from "@/lib/supabase";
+import { NextResponse } from "next/server";
 
 export const runtime     = "nodejs";
 export const maxDuration = 300;
 
-const CACHE_KEY = "concursos:v19";
+const TOTAL_LOTES = 22; // VAGAS_URLS(16) + CONCURSOS_URLS(6)
 
 export async function GET(req: Request) {
   // Segurança: Vercel injeta este header nos cron jobs
@@ -22,45 +19,49 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
+    (req.headers.get("x-forwarded-host")
+      ? `https://${req.headers.get("x-forwarded-host")}`
+      : "https://concursos-contabeis.vercel.app");
+
   const inicio = Date.now();
+  let totalAcumulado = 0;
+  let lotesOk = 0;
+  const erros: string[] = [];
 
-  try {
-    // Scraping ao vivo — ignora cache existente
-    const concursos = await scrapeAllConcursos();
-    const atualizadoEm = new Date().toISOString();
-
-    // Persiste no Supabase
-    const sb = getSupabase();
-    if (sb) {
-      const { error } = await sb.from("cache_concursos").upsert({
-        chave: CACHE_KEY,
-        dados: { concursos, atualizadoEm },
-        atualizado: atualizadoEm,
-      });
-
-      if (error) {
-        console.error("[CRON] Erro ao salvar cache:", error.message);
-        return NextResponse.json(
-          { ok: false, error: error.message },
-          { status: 500 }
-        );
-      }
-    }
-
-    const duracaoMs = Date.now() - inicio;
-    console.log(`[CRON] Cache atualizado: ${concursos.length} concursos em ${duracaoMs}ms`);
-
-    return NextResponse.json({
-      ok: true,
-      total: concursos.length,
-      atualizadoEm,
-      duracaoMs,
+  for (let lote = 0; lote < TOTAL_LOTES; lote++) {
+    const isFim = lote === TOTAL_LOTES - 1;
+    const params = new URLSearchParams({
+      lote: String(lote),
+      ...(isFim ? { fim: "1" } : {}),
     });
-  } catch (err) {
-    console.error("[CRON] Erro no scraping:", err);
-    return NextResponse.json(
-      { ok: false, error: String(err) },
-      { status: 500 }
-    );
+
+    try {
+      const res = await fetch(`${baseUrl}/api/scrape-lote?${params}`, {
+        headers: { authorization: authHeader || "" },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        lotesOk++;
+        totalAcumulado = data.totalAcumulado ?? totalAcumulado;
+      } else {
+        erros.push(`lote ${lote}: ${data.error ?? "falhou"}`);
+      }
+      if (data.fim) break;
+    } catch (e) {
+      erros.push(`lote ${lote}: ${String(e)}`);
+    }
   }
+
+  const duracaoMs = Date.now() - inicio;
+  console.log(`[CRON] ${lotesOk}/${TOTAL_LOTES} lotes OK | ${totalAcumulado} concursos | ${duracaoMs}ms`);
+
+  return NextResponse.json({
+    ok: erros.length === 0,
+    lotesOk,
+    totalLotes: TOTAL_LOTES,
+    totalAcumulado,
+    duracaoMs,
+    erros: erros.length > 0 ? erros : undefined,
+  });
 }
