@@ -845,9 +845,10 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     // "[94] 10 vagas até R$ 5.409,87Vários CargosMédio / Superior"
     // "[102] 4 vagas até R$ 6.093,47Contador, EconomistaSuperior"
     // "[linha] 3 vagas + CR até R$ 2.043,00Auxiliar de Serviços Gerais, ContadorFundamental"
-    // Procura a linha específica que contém "vagas até R$"
+    // Procura a linha específica que contém "vagas ... R$"
+    // Usa [^R\d]* para evitar dependência de encoding do caractere "é" em "até"
     const linhaVagas = bloco.find(l =>
-      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva).*at[eé]\s+R\$/i.test(l)
+      /(\d+\s+vagas?(?:\s*\+\s*CR)?|cadastro\s+reserva)[^R\d]*R\$/i.test(l)
     ) ?? "";
 
     if (!linhaVagas) continue; // sem linha de vagas — não é entrada válida
