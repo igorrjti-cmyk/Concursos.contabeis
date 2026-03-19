@@ -53,6 +53,10 @@ const VAGAS_URLS = [
   "/vagas/contador-publico",
   "/vagas/auditor-de-controle-interno",
   "/vagas/analista-de-controle-interno",
+  "/vagas/auditor-fiscal-de-tributos",
+  "/vagas/fiscal-de-rendas",
+  "/vagas/analista-de-controle",
+  "/vagas/sub-contador",
 ];
 
 // Nota: o PCI Concursos não possui seção separada para concursos aguardando prova.
@@ -814,6 +818,7 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     const ufDoTitle = title.match(/\s+-\s+([A-Z]{2})\s+/)?.[1] ?? "Nacional";
 
     const cargoDoTitle = (() => {
+      // Tenta extrair cargo do padrão "para Cargo em Órgão"
       const m = title.match(/\b(?:para|ao cargo de|vagas?\s+(?:de|para))\s+(.{3,80}?)(?:\s+em\s+|\s+com\s+|\s+no\s+|\s+na\s+|\s+sob\s+|$)/i);
       if (m) {
         const c = m[1].trim().replace(/\s+$/, "");
@@ -823,6 +828,10 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
       }
       return null;
     })();
+
+    // Verifica se o título lista cargos contábeis explicitamente
+    // Ex: "Arquiteto e Urbanista, Contador, Assistente Administrativo - ICMBio - CE"
+    const titleTemContabil = CARGO_CONTABIL_KW.some(kw => title.toLowerCase().includes(kw));
 
     const idxOrgao = linhasGeral.findIndex(l => l === orgao);
     if (idxOrgao === -1) continue;
@@ -900,15 +909,24 @@ async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
     }
 
     // Filtro contábil — pré-check na listagem (sem texto do edital ainda)
-    // Se o cargo tem palavra-chave direta → aceita imediatamente
-    // Se é nível Superior com cargo genérico → deixa passar para scrapeDetalhe verificar o PDF
-    // Se claramente não é contábil → rejeita
     const nivelSuperior = nivelRaw.toLowerCase().includes("superior");
     const cargoGenerico = CARGO_GENERICO_CONTABIL_KW.some(kw => cargo.toLowerCase().includes(kw));
-    // Genérico + nível superior → passa para scrapeDetalhe confirmar via PDF (CRC/Contábeis)
-    // Genérico + nível médio/técnico → rejeita imediatamente (sem CRC não é contábil)
     const passaParaDetalhe = nivelSuperior && cargoGenerico;
-    if (!ehConcursoContabil(cargo, title, orgao) && !passaParaDetalhe) continue;
+    // Aceita se: cargo contábil direto OU título lista cargo contábil OU cargo genérico nível superior
+    if (!ehConcursoContabil(cargo, title, orgao) && !passaParaDetalhe && !titleTemContabil) continue;
+    // Se título tem cargo contábil mas cargo extraído é genérico, usa o cargo do título
+    if (titleTemContabil && !ehConcursoContabil(cargo, title, orgao)) {
+      // Extrai os cargos contábeis do título
+      const cargosNoTitulo = title.split(/,|\se\s/).map(p => p.trim()).filter(p =>
+        CARGO_CONTABIL_KW.some(kw => p.toLowerCase().includes(kw))
+      );
+      if (cargosNoTitulo.length > 0) {
+        cargo = cargosNoTitulo.map(c => {
+          // Remove sufixo " - Órgão - UF" se presente
+          return c.replace(/\s+-\s+.+$/, "").trim();
+        }).join(", ");
+      }
+    }
 
     items.push({
       id:            slugify(cargo + "-" + orgao),
