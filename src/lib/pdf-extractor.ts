@@ -90,7 +90,8 @@ export interface CargoDetalhe {
  *   "Contador  5 vagas  R$ 5.000,00  Superior"
  *   "01 - Contador | 3 | R$ 4.500,00 | Graduação"
  */
-export function extrairTabelaCargos(texto: string): CargoDetalhe[] {
+export function extrairTabelaCargos(texto: string, textoCompleto?: string): CargoDetalhe[] {
+  const textoSrc = textoCompleto ?? texto;
   const resultado: CargoDetalhe[] = [];
   const seen = new Set<string>();
   const linhas = texto.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 3);
@@ -163,6 +164,55 @@ export function extrairTabelaCargos(texto: string): CargoDetalhe[] {
     }
   }
 
+  // Estratégia 2: extração por seção (CARGO: / VAGAS: / SALÁRIO:)
+  // Cobre editais onde cada cargo vem em bloco separado
+  if (resultado.length === 0) {
+    const blocos = textoSrc.split(/(?:^|
+)(?:cargo|função|emprego)[:\s]/im);
+    for (const bloco of blocos.slice(1, 11)) {
+      const primLinha = bloco.split("
+")[0]?.trim() ?? "";
+      if (!primLinha || !ehContabil(primLinha)) continue;
+      if (seen.has(primLinha.toLowerCase())) continue;
+
+      const vagasM = bloco.match(/vagas?\s*[:\-]?\s*(\d+|cadastro\s+reserva|CR)/i);
+      const salM   = bloco.match(/(?:salário|remuneração|vencimento)\s*[:\-]?\s*R\$\s*([\d.,]+)/i);
+
+      if (!vagasM && !salM) continue;
+      seen.add(primLinha.toLowerCase());
+
+      resultado.push({
+        cargo:    primLinha.charAt(0).toUpperCase() + primLinha.slice(1),
+        vagas:    vagasM ? vagasM[1].trim() + " vagas" : "-",
+        salario:  salM   ? "R$ " + salM[1]  : "Ver edital",
+        nivel:    detectNivelLocal(bloco.slice(0, 300)),
+        requisito: bloco.toLowerCase().includes("crc")
+          ? "Graduação + CRC"
+          : bloco.toLowerCase().includes("ciências contábeis")
+            ? "Graduação - Ciências Contábeis"
+            : "Nível Superior",
+      });
+    }
+  }
+
+  // Estratégia 3: inline "(Cargo: X vagas, R$ Y)"
+  if (resultado.length === 0) {
+    const inlineRe = /([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-záéíóúâêîôûãõç\s]{3,40}?)\s*[:\(]\s*(\d+)\s*vagas?,\s*R\$\s*([\d.,]+)/gi;
+    let m;
+    while ((m = inlineRe.exec(textoSrc)) !== null) {
+      const cargo = m[1].trim();
+      if (!ehContabil(cargo) || seen.has(cargo.toLowerCase())) continue;
+      seen.add(cargo.toLowerCase());
+      resultado.push({
+        cargo: cargo.charAt(0).toUpperCase() + cargo.slice(1),
+        vagas: m[2] + " vagas",
+        salario: "R$ " + m[3],
+        nivel: "Superior",
+        requisito: "Nível Superior",
+      });
+    }
+  }
+
   return resultado.slice(0, 10);
 }
 
@@ -200,7 +250,7 @@ export async function extrairDetalhesDoPDF(pdfUrl: string): Promise<Partial<Deta
 
   console.log(`[PDF] banca=${banca} prova=${dataProva} resultado=${dataResultado}`);
 
-  const cargosDetalhados = extrairTabelaCargos(textoRaw);
+  const cargosDetalhados = extrairTabelaCargos(textoNorm, textoRaw);
   console.log(`[PDF] cargosDetalhados=${cargosDetalhados.length}`);
 
   return { banca, dataProva, dataResultado, cargosContabeis, requisito, linkEdital: "", cargosDetalhados };

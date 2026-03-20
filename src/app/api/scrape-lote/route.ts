@@ -205,30 +205,43 @@ export async function GET(req: Request) {
         CONTABIL_KW_LOTE.some(kw => cd.cargo.toLowerCase().includes(kw))
       );
 
-      if (cargosDetalhadosLote.length > 1) {
-        // Edital com múltiplos cargos contábeis → explode em registros separados
+      // Determina quais cargos explodir (com ou sem dados do PDF)
+      const cargosParaExplodir = cargosDetalhadosLote.length > 1
+        ? cargosDetalhadosLote.map(cd => ({
+            cargo: cd.cargo, vagas: cd.vagas,
+            salario: cd.salario, nivel: cd.nivel,
+          }))
+        : det.cargosContabeis.length > 1
+          ? det.cargosContabeis.map(cg => ({
+              cargo: cg,
+              vagas: item.vagas || "-",
+              salario: "Ver edital",
+              nivel: (() => {
+                const cl = cg.toLowerCase();
+                if (["contador","auditor","analista contábil"].some(k => cl.includes(k))) return "Superior";
+                if (cl.includes("técnico em contabilidade") || cl.includes("tecnico em contabilidade")) return "Médio/Técnico";
+                return item.nivel || "Superior";
+              })(),
+            }))
+          : [];
+
+      if (cargosParaExplodir.length > 1) {
         const statusExp = reclassificarStatus(
           (item.status as import("@/lib/scraper").Concurso["status"]),
           det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-",
           det.dataResultado !== "-" ? det.dataResultado : item.dataResultado ?? "-"
         );
-        for (const cd of cargosDetalhadosLote) {
+        for (const cd of cargosParaExplodir) {
           const keyExp = slugify(cd.cargo + "-" + (item.orgao || ""));
           if (seen.has(keyExp)) continue;
           seen.add(keyExp);
-          const nivelExp = (() => {
-            const cl = cd.cargo.toLowerCase();
-            if (["contador","auditor","analista contábil"].some(k => cl.includes(k))) return "Superior";
-            if (cl.includes("técnico em contabilidade") || cl.includes("tecnico em contabilidade")) return "Médio/Técnico";
-            return cd.nivel || "Superior";
-          })();
           novos.push({
             ...item,
             id: keyExp,
             cargo: cd.cargo,
-            nivel: nivelExp,
-            vagas: cd.vagas || item.vagas || "-",
-            salario: cd.salario || item.salario || "A consultar",
+            nivel: cd.nivel,
+            vagas: cd.vagas,
+            salario: cd.salario,
             status: statusExp,
             banca: det.banca !== "-" ? det.banca : item.banca ?? "-",
             dataProva: det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-",

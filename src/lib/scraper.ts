@@ -1267,35 +1267,54 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     }
 
     // ── Explosão de multi-cargo ────────────────────────────────────────────────
-    // Se o PDF retornou cargos detalhados com salários individuais,
-    // criamos um registro separado por cargo contábil.
+    // Estratégia 1: PDF retornou tabela com salários individuais → cada cargo tem dados reais
+    // Estratégia 2: PDF não tinha tabela → usa cargosContabeis com salário "Ver edital"
     const cargosDetalhados = det.cargosDetalhados ?? [];
     const cargosContabeisDetalhados = cargosDetalhados.filter(cd => {
       const cdLow = cd.cargo.toLowerCase();
       return CARGO_CONTABIL_KW.some(kw => cdLow.includes(kw));
     });
 
-    if (cargosContabeisDetalhados.length > 1) {
-      // Edital com múltiplos cargos contábeis com salários distintos → explode
+    // Determina quais cargos explodir
+    const cargosParaExplodir: { cargo: string; vagas: string; salario: string; nivel: string }[] =
+      cargosContabeisDetalhados.length > 1
+        // Estratégia 1: dados reais do PDF
+        ? cargosContabeisDetalhados.map(cd => ({
+            cargo:  cd.cargo,
+            vagas:  cd.vagas,
+            salario: cd.salario,
+            nivel:  cd.nivel || detectNivel(item.nivel || "Superior", cd.cargo),
+          }))
+        // Estratégia 2: usa cargosContabeis do edital sem salário individual
+        : det.cargosContabeis.length > 1
+          ? det.cargosContabeis.map(cg => ({
+              cargo:  cg,
+              vagas:  item.vagas || "-",   // vagas totais — não temos por cargo
+              salario: "Ver edital",        // salário individual desconhecido
+              nivel:  detectNivel(item.nivel || "Superior", cg),
+            }))
+          : [];
+
+    if (cargosParaExplodir.length > 1) {
       const statusFinal = reclassificarStatus(
         item.status as Concurso["status"], det.dataProva, det.dataResultado
       );
-      for (const cd of cargosContabeisDetalhados) {
+      for (const cd of cargosParaExplodir) {
         completos.push({
           id:              slugify(cd.cargo + "-" + (item.orgao || "")),
           cargo:           cd.cargo,
           cargosContabeis: [cd.cargo],
           orgao:           item.orgao || "-",
           estado:          item.estado || "Nacional",
-          vagas:           cd.vagas || item.vagas || "-",
-          salario:         cd.salario || item.salario || "A consultar",
+          vagas:           cd.vagas,
+          salario:         cd.salario,
           inscricao:       item.inscricao || "-",
           inscricaoAte:    item.inscricaoAte || "Ver edital",
           diasRestantes:   item.diasRestantes ?? -1,
           linkNoticia:     item.linkNoticia || "",
           linkEdital:      det.linkEdital || item.linkNoticia || "",
           banca:           det.banca !== "-" ? det.banca : (item.banca || "-"),
-          nivel:           cd.nivel || detectNivel(item.nivel || "Superior", cd.cargo),
+          nivel:           cd.nivel,
           dataProva:       det.dataProva,
           dataResultado:   det.dataResultado,
           status:          statusFinal,
