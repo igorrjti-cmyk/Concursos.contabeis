@@ -533,36 +533,16 @@ function HomeContent() {
   const publicarInstagram = async (c: Concurso) => {
     setDownloadingId(c.id + "ig");
     try {
-      const h2c = (await import("html2canvas")).default;
       await document.fonts.ready;
 
-      // Gera feed 4:5 — scale 2.25 → 1080×1350px real
-      const elFeed = document.getElementById("card-" + c.id + "-feed");
-      if (!elFeed) throw new Error("Card feed não encontrado. Vá para a aba Cards primeiro.");
-      const canvasFeed = await h2c(elFeed, { scale: 2.25, backgroundColor: null, useCORS: true });
-      const feedBase64 = canvasFeed.toDataURL("image/png");
+      // Usa renderCardCanvas — gera o card direto no canvas sem precisar do DOM.
+      // Funciona em qualquer aba, sem precisar ir para "Cards" primeiro.
+      const { renderCardCanvas } = await import("@/lib/card-renderer");
 
-      // Gera stories 9:16 — scale 4 → 1080×1920px real
-      // Se o card de stories não estiver visível, gera a partir do feed redimensionado
-      let storiesBase64: string | null = null;
-      const elStories = document.getElementById("card-" + c.id + "-stories");
-      if (elStories) {
-        const canvasStories = await h2c(elStories, { scale: 4, backgroundColor: null, useCORS: true });
-        storiesBase64 = canvasStories.toDataURL("image/png");
-      } else {
-        // Fallback: redimensiona o feed para formato stories (adiciona fundo e centraliza)
-        const canvasStories = document.createElement("canvas");
-        canvasStories.width  = 1080;
-        canvasStories.height = 1920;
-        const ctx = canvasStories.getContext("2d")!;
-        // Fundo escuro igual ao tema do painel
-        ctx.fillStyle = "#060E20";
-        ctx.fillRect(0, 0, 1080, 1920);
-        // Centraliza o feed (1080×1350) verticalmente no stories (1080×1920)
-        const offsetY = (1920 - 1350) / 2;
-        ctx.drawImage(canvasFeed, 0, offsetY, 1080, 1350);
-        storiesBase64 = canvasStories.toDataURL("image/png");
-      }
+      const canvasFeed    = await renderCardCanvas(c, "feed");
+      const canvasStories = await renderCardCanvas(c, "stories");
+      const feedBase64    = canvasFeed.toDataURL("image/png");
+      const storiesBase64 = canvasStories.toDataURL("image/png");
 
       const legenda = gerarLegenda(c);
 
