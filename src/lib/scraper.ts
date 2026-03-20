@@ -427,10 +427,11 @@ function calcDiasRestantes(inscricao: string): number {
     const d = new Date(+u[3], +u[2] - 1, +u[1]);
     return Math.ceil((d.getTime() - hoje.getTime()) / 86400000);
   }
+  // Bug 8 fix: data no formato dd/mm sem ano — se já passou neste ano, tenta ano seguinte
   const mc = inscricao.match(/(\d{2})\/(\d{2})(?!\/)/);
   if (mc) {
-    const d = new Date(hoje.getFullYear(), +mc[2] - 1, +mc[1]);
-    if (d < hoje) return -1;
+    let d = new Date(hoje.getFullYear(), +mc[2] - 1, +mc[1]);
+    if (d < hoje) d = new Date(hoje.getFullYear() + 1, +mc[2] - 1, +mc[1]);
     return Math.ceil((d.getTime() - hoje.getTime()) / 86400000);
   }
   return -1;
@@ -643,13 +644,13 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
   };
 
   // Valida se uma data extraída faz sentido para um concurso público atual
-  // Rejeita datas anteriores a 2024 ou mais de 2 anos no futuro
+  // Bug 9 fix: era >= 2024 hardcoded — agora usa anoAtual - 1 para não quebrar em 2027+
   function dataValida(d: string): boolean {
     const m = d.match(/(\d{2})\/(\d{2})\/(\d{4})/);
     if (!m) return false;
     const ano = parseInt(m[3]);
     const anoAtual = new Date().getFullYear();
-    return ano >= 2024 && ano <= anoAtual + 2;
+    return ano >= anoAtual - 1 && ano <= anoAtual + 2;
   }
 
   // ── Converte datas por extenso para DD/MM/AAAA ──────────────────────────────

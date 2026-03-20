@@ -7,8 +7,6 @@ import { NextResponse } from "next/server";
 export const runtime     = "nodejs";
 export const maxDuration = 300;
 
-const TOTAL_LOTES = 22; // VAGAS_URLS(16) + CONCURSOS_URLS(6)
-
 export async function GET(req: Request) {
   // Segurança: Vercel injeta este header nos cron jobs
   const authHeader = req.headers.get("authorization");
@@ -27,10 +25,12 @@ export async function GET(req: Request) {
   const inicio = Date.now();
   let totalAcumulado = 0;
   let lotesOk = 0;
+  // Bug fix: TOTAL_LOTES era hardcoded — descobre o valor real no lote 0
+  let totalLotes = 22; // fallback seguro
   const erros: string[] = [];
 
-  for (let lote = 0; lote < TOTAL_LOTES; lote++) {
-    const isFim = lote === TOTAL_LOTES - 1;
+  for (let lote = 0; lote < totalLotes; lote++) {
+    const isFim = lote === totalLotes - 1;
     const params = new URLSearchParams({
       lote: String(lote),
       ...(isFim ? { fim: "1" } : {}),
@@ -41,6 +41,8 @@ export async function GET(req: Request) {
         headers: { authorization: authHeader || "" },
       });
       const data = await res.json();
+      // Atualiza totalLotes com o valor real retornado pela API
+      if (lote === 0 && data.totalLotes) totalLotes = data.totalLotes;
       if (data.ok) {
         lotesOk++;
         totalAcumulado = data.totalAcumulado ?? totalAcumulado;

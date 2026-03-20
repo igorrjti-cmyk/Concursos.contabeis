@@ -42,11 +42,15 @@ export async function GET(req: Request) {
     hoje.setHours(0, 0, 0, 0);
 
     // ── 1. Notificação de concursos NOVOS ──────────────────────────────────
-    // "Novo" = foi capturado nas últimas 24h
-    const ontemISO = new Date(hoje.getTime() - 86400000).toISOString();
+    // "Novo" = capturado nas últimas 48h E ainda não notificado
+    // Usa 48h (não 24h) para cobrir casos onde o scraping atrasou ou o cron
+    // de atualização rodou depois do horário esperado.
+    // O controle de duplicatas (tabela notificacoes_enviadas) garante que
+    // cada concurso só gera um e-mail, independente da janela de tempo.
+    const janela48h = new Date(hoje.getTime() - 48 * 3600000).toISOString();
 
     for (const c of concursos) {
-      if (!c.dataCaptura || c.dataCaptura < ontemISO) continue;
+      if (!c.dataCaptura || c.dataCaptura < janela48h) continue;
 
       // Verifica se já enviamos notificação para este concurso
       const { data: jaEnviado } = await sb

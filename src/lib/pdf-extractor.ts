@@ -219,9 +219,13 @@ export async function extrairDetalhesDoPDF(pdfUrl: string): Promise<Partial<Deta
 
   const textoNorm = normalizarDatas(textoRaw);
 
-  const banca           = extrairBanca(textoRaw);
-  const dataProva       = extrairDataProva(textoNorm);
-  const dataResultado   = extrairDataResultado(textoNorm, dataProva);
+  // Bug 3 fix: extrairCronograma era chamado dentro de extrairDataProva E
+  // extrairDataResultado separadamente — parse duplo desnecessário.
+  // Agora é chamado uma única vez aqui e os resultados são passados diretamente.
+  const crono         = extrairCronograma(textoNorm);
+  const banca         = extrairBanca(textoRaw);
+  const dataProva     = crono.dataProva !== "-" ? crono.dataProva     : extrairDataProvaFallback(textoNorm);
+  const dataResultado = crono.dataResultado !== "-" ? crono.dataResultado : extrairDataResultadoFallback(textoNorm, dataProva);
   const cargosContabeis = extrairCargos(textoNorm);
   const requisito       = extrairRequisito(textoRaw);
 
@@ -266,13 +270,13 @@ function extrairBanca(texto: string): string {
   return "-";
 }
 
-// Valida se a data extraída faz sentido para concurso atual (2024 em diante)
+// Valida se a data extraída faz sentido para concurso atual (últimos 2 anos até +2 futuros)
 function dataValidaPDF(d: string): boolean {
   const m = d.match(/(\d{2})\/(\d{2})\/(\d{4})/);
   if (!m) return false;
   const ano = parseInt(m[3]);
   const anoAtual = new Date().getFullYear();
-  return ano >= 2024 && ano <= anoAtual + 2;
+  return ano >= anoAtual - 2 && ano <= anoAtual + 2;
 }
 
 function extrairCronograma(textoNorm: string): { dataProva: string; dataResultado: string } {
@@ -303,9 +307,7 @@ function extrairCronograma(textoNorm: string): { dataProva: string; dataResultad
   return { dataProva, dataResultado };
 }
 
-function extrairDataProva(textoNorm: string): string {
-  const crono = extrairCronograma(textoNorm);
-  if (crono.dataProva !== "-") return crono.dataProva;
+function extrairDataProvaFallback(textoNorm: string): string {
   const padroes = [
     /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+de\s+realiza[cç][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
@@ -325,9 +327,7 @@ function extrairDataProva(textoNorm: string): string {
   return "-";
 }
 
-function extrairDataResultado(textoNorm: string, dataProva: string): string {
-  const crono = extrairCronograma(textoNorm);
-  if (crono.dataResultado !== "-" && crono.dataResultado !== dataProva) return crono.dataResultado;
+function extrairDataResultadoFallback(textoNorm: string, dataProva: string): string {
   const padroes = [
     /divulga[cç][aã]o\s+(?:do\s+)?(?:resultado|gabarito)\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /resultado\s+(?:final|definitivo)\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,

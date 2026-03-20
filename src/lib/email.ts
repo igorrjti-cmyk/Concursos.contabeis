@@ -6,12 +6,19 @@ import type { Concurso } from "./scraper";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const NOTIFY_EMAIL   = process.env.NOTIFY_EMAIL || ""; // seu e-mail para receber alertas
-const FROM_EMAIL     = process.env.FROM_EMAIL   || "concursos@concursoscontabeis.com.br";
+// IMPORTANTE: FROM_EMAIL deve ser um domínio verificado no Resend (não Gmail/Outlook).
+// Se não tiver domínio próprio verificado, use o sandbox do Resend: onboarding@resend.dev
+// (só envia para o e-mail do dono da conta Resend — perfeito para uso pessoal)
+const FROM_EMAIL = process.env.FROM_EMAIL || "onboarding@resend.dev";
 
 // ─── Envia e-mail via Resend ──────────────────────────────────────────────────
 async function enviarEmail(to: string, subject: string, html: string): Promise<boolean> {
   if (!RESEND_API_KEY) {
-    console.warn("RESEND_API_KEY não configurado — e-mail não enviado");
+    console.warn("[EMAIL] RESEND_API_KEY não configurado — e-mail não enviado");
+    return false;
+  }
+  if (!to) {
+    console.warn("[EMAIL] NOTIFY_EMAIL não configurado — e-mail não enviado");
     return false;
   }
   try {
@@ -25,12 +32,15 @@ async function enviarEmail(to: string, subject: string, html: string): Promise<b
     });
     const data = await res.json();
     if (!res.ok) {
-      console.error("Erro Resend:", data);
+      // Log detalhado: mostra o erro exato do Resend (ex: domínio não verificado, API key inválida)
+      console.error(`[EMAIL] Erro Resend (HTTP ${res.status}):`, JSON.stringify(data));
+      console.error(`[EMAIL] FROM=${FROM_EMAIL} | TO=${to} | SUBJECT=${subject}`);
       return false;
     }
+    console.log(`[EMAIL] Enviado com sucesso: id=${data.id} | to=${to}`);
     return true;
   } catch (e) {
-    console.error("Erro ao enviar e-mail:", e);
+    console.error("[EMAIL] Erro de rede ao enviar e-mail:", e);
     return false;
   }
 }

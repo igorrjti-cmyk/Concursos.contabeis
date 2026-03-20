@@ -6,11 +6,11 @@
     },
     {
       "path": "/api/cron/notificacoes",
-      "schedule": "0 8 * * *"
+      "schedule": "0 9 * * *"
     },
     {
       "path": "/api/cron/resumo-semanal",
-      "schedule": "0 8 * * 0"
+      "schedule": "0 9 * * 0"
     }
   ]
 }

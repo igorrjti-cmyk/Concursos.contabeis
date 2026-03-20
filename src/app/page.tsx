@@ -223,7 +223,7 @@ function HomeContent() {
   const [cardFormato, setCardFormato]   = useState<CardFormato>("feed");
   const [atualizadoEm, setAtualizadoEm] = useState("");
   const [fromCache, setFromCache]       = useState(false);
-  const [confirmModal, setConfirmModal] = useState<{ mensagem: string; onConfirm: () => void } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ mensagem: string; onConfirm: () => void; onCancel: () => void } | null>(null);
   const [clearing, setClearing]         = useState(false);
   const [debugging, setDebugging]       = useState(false);
   const [erro, setErro]                 = useState<string | null>(null);
@@ -244,7 +244,11 @@ function HomeContent() {
 
   const confirmar = (mensagem: string): Promise<boolean> =>
     new Promise(resolve => {
-      setConfirmModal({ mensagem, onConfirm: () => { setConfirmModal(null); resolve(true); } });
+      setConfirmModal({
+        mensagem,
+        onConfirm:  () => { setConfirmModal(null); resolve(true); },
+        onCancel:   () => { setConfirmModal(null); resolve(false); },
+      });
     });
 
   const runDebug = async () => {
@@ -293,8 +297,6 @@ function HomeContent() {
     }
   };
 
-  const TOTAL_LOTES = 22; // VAGAS_URLS(16) + CONCURSOS_URLS(6) — deve bater com o scraper.ts
-
   const fetchConcursos = useCallback(async (forceRefresh = false) => {
     forceRefresh ? setRefreshing(true) : setLoading(true);
     setErro(null);
@@ -316,10 +318,30 @@ function HomeContent() {
         }
       }
 
-      // forceRefresh = true → chama lotes em sequência
-      setLoteProgresso({ atual: 0, total: TOTAL_LOTES });
+      // Bug 2 fix: busca lote 0 primeiro para descobrir totalLotes real da API
+      // Evita hardcoded que desincroniza quando VAGAS_URLS / CONCURSOS_URLS mudam
+      let TOTAL_LOTES = 22; // fallback seguro
+      try {
+        const res0  = await fetch("/api/scrape-lote?lote=0");
+        const data0 = await res0.json();
+        if (data0?.totalLotes) TOTAL_LOTES = data0.totalLotes;
+        setLoteProgresso({ atual: 1, total: TOTAL_LOTES });
+        if (data0.ok && data0.totalAcumulado > 0) {
+          const res2  = await fetch("/api/concursos");
+          const data2 = await res2.json();
+          if (data2.ok) {
+            setConcursos(data2.concursos as Concurso[]);
+            setFromCache(false);
+            setAtualizadoEm(new Date(data2.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }));
+            console.log(`[Lote 1/${TOTAL_LOTES}] ${data0.novosNesteLote} novos | Total: ${data2.concursos.length}`);
+          }
+        }
+        if (data0.fim) return;
+      } catch (e) {
+        console.warn("[Lote 1] Falhou, continuando...", e);
+      }
 
-      for (let lote = 0; lote < TOTAL_LOTES; lote++) {
+      for (let lote = 1; lote < TOTAL_LOTES; lote++) {
         const isFim  = lote === TOTAL_LOTES - 1;
         const params = new URLSearchParams({ lote: String(lote), ...(isFim ? { fim: "1" } : {}) });
 
@@ -565,7 +587,7 @@ function HomeContent() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#060E20", fontFamily: "'Sora',sans-serif", color: "#fff" }}>
-      {confirmModal && <ConfirmModal mensagem={confirmModal.mensagem} onConfirm={confirmModal.onConfirm} onCancel={() => setConfirmModal(null)} />}
+      {confirmModal && <ConfirmModal mensagem={confirmModal.mensagem} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} />}
 
       {/* ── Banner de erro ── */}
       {erro && (
@@ -841,7 +863,7 @@ function HomeContent() {
               const temProva = c.dataProva && c.dataProva !== "-";
 
               return (
-                <div key={c.id} style={{
+                <div key={c.id} id={"item-" + c.id} style={{
                   background: isOpen ? "rgba(0,200,150,.03)" : "rgba(255,255,255,.02)",
                   border: "1px solid " + (isOpen ? "rgba(0,200,150,.25)" : "rgba(255,255,255,.06)"),
                   borderRadius: 14, overflow: "hidden",
@@ -1142,7 +1164,15 @@ function HomeContent() {
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
                         {c && (
-                          <button onClick={() => { setTab("lista"); }} style={{ background: "rgba(0,200,150,.1)", border: "1px solid rgba(0,200,150,.2)", color: "#00C896", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+                          <button onClick={() => {
+                            setTab("lista");
+                            setExpanded(f.concurso_id);
+                            // Aguarda a tab renderizar antes de rolar até o elemento
+                            setTimeout(() => {
+                              const el = document.getElementById("item-" + f.concurso_id);
+                              if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                            }, 120);
+                          }} style={{ background: "rgba(0,200,150,.1)", border: "1px solid rgba(0,200,150,.2)", color: "#00C896", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
                             Ver na lista
                           </button>
                         )}
@@ -1352,7 +1382,7 @@ function HomeContent() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {historico.map(h => (
-                  <div key={String(h.id) + h.posted_at} style={{
+                  <div key={h.id} style={{
                     background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)",
                     borderRadius: 12, padding: "12px 16px",
                     display: "flex", justifyContent: "space-between", alignItems: "center",
