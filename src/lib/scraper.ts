@@ -187,6 +187,8 @@ const CARGO_CONTABIL_KW = [
   "auditor de tributos", "auditor tributário", "auditor tributario",
   "auditor de controle interno",
   "auditor municipal", "auditor estadual", "auditor federal",
+  // Auditor de Controle Interno — cargo contábil válido
+  "auditor de controle", "auditor de controle interno",
   // Auditores genéricos só passam pelo fluxo de detalhe (verificação de CRC/Contábeis no PDF)
   // Fiscais tributários
   "fiscal tribut", "fiscal de tribut", "fiscal contábil",

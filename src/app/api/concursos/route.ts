@@ -121,9 +121,9 @@ function reclassificarCache(concursos: Concurso[]): Concurso[] {
             }
           }
         } else {
-          // Sem data de prova: descarta se inscrição encerrou há mais de 60 dias
-          // Reduzido de 180 para 60 para descartar mais rápido concursos sem cronograma
-          if (diasRestantes < -60) {
+          // Sem data de prova: mantém por até 14 dias após o fim das inscrições
+          // Dá tempo do scraper capturar a data de prova do edital
+          if (diasRestantes < -14) {
             status = "Encerrado";
           }
         }
