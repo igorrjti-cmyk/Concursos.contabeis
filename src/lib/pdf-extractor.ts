@@ -200,7 +200,7 @@ export async function extrairDetalhesDoPDF(pdfUrl: string): Promise<Partial<Deta
 
   console.log(`[PDF] banca=${banca} prova=${dataProva} resultado=${dataResultado}`);
 
-  const cargosDetalhados = extrairTabelaCargos(texto);
+  const cargosDetalhados = extrairTabelaCargos(textoRaw);
   console.log(`[PDF] cargosDetalhados=${cargosDetalhados.length}`);
 
   return { banca, dataProva, dataResultado, cargosContabeis, requisito, linkEdital: "", cargosDetalhados };
