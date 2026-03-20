@@ -93,20 +93,17 @@ export interface CargoDetalhe {
 export function extrairTabelaCargos(texto: string): CargoDetalhe[] {
   const resultado: CargoDetalhe[] = [];
   const seen = new Set<string>();
-  const linhas = texto.split(/
-/).map(l => l.trim()).filter(l => l.length > 3);
+  const linhas = texto.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 3);
 
   // Padrões para detectar linha de cargo com vagas e salário
-  const padroes = [
+  const padroes: RegExp[] = [
     // "Contador  5 vagas  R$ 5.409,87  Superior"
-    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d
-]{3,60}?)\s+(\d+(?:\s+vagas?)?(?:\s*\+\s*CR)?|CR|cadastro\s+reserva)\s+R\$\s*([\d.,]+)/i,
+    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d\n]{3,60}?)\s+(\d+(?:\s+vagas?)?(?:\s*\+\s*CR)?|CR|cadastro\s+reserva)\s+R\$\s*([\d.,]+)/i,
     // "01. Contador | 5 vagas | R$ 5.409,87"
-    /^(?:\d+[\.\-\s]+)?([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d|]{3,50}?)\s*\|\s*(\d+(?:\s+vagas?)?|CR)\s*\|\s*R\$\s*([\d.,]+)/i,
+    /^(?:\d+[.\-\s]+)?([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d|]{3,50}?)\s*\|\s*(\d+(?:\s+vagas?)?|CR)\s*\|\s*R\$\s*([\d.,]+)/i,
     // "Contador: 5 vagas, salário R$ 5.409,87"
-    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d
-]{3,50}?):\s*(\d+)\s*vagas?,\s*(?:salário|remuneração)[:\s]+R\$\s*([\d.,]+)/i,
-    // Tabela sem separador mas com padrão numérico claro
+    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d\n]{3,50}?):\s*(\d+)\s*vagas?,\s*(?:salário|remuneração)[:\s]+R\$\s*([\d.,]+)/i,
+    // Tabela com espaços duplos
     /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-záéíóúâêîôûãõç\s]{3,50}?)\s{2,}(\d{1,3}(?:\s+vagas?)?)\s{2,}R\$\s*([\d.,]+)/i,
   ];
 
@@ -144,16 +141,15 @@ export function extrairTabelaCargos(texto: string): CargoDetalhe[] {
         if (seen.has(key)) break;
         seen.add(key);
 
-        // Detecta nível na linha atual ou próximas 2
         const contexto = linhas.slice(i, i + 3).join(" ");
         const nivel = detectNivelLocal(contexto);
 
-        // Detecta requisito
         let requisito = "Nível Superior";
         if (contexto.toLowerCase().includes("crc")) requisito = "Graduação + CRC";
-        else if (contexto.toLowerCase().includes("ciências contábeis") || contexto.toLowerCase().includes("ciencias contabeis")) {
-          requisito = "Graduação - Ciências Contábeis";
-        }
+        else if (
+          contexto.toLowerCase().includes("ciências contábeis") ||
+          contexto.toLowerCase().includes("ciencias contabeis")
+        ) requisito = "Graduação - Ciências Contábeis";
 
         resultado.push({
           cargo: cargo.charAt(0).toUpperCase() + cargo.slice(1),
@@ -167,7 +163,7 @@ export function extrairTabelaCargos(texto: string): CargoDetalhe[] {
     }
   }
 
-  return resultado.slice(0, 10); // máx 10 cargos por edital
+  return resultado.slice(0, 10);
 }
 
 async function extrairTextoPDF(buffer: ArrayBuffer): Promise<string> {
