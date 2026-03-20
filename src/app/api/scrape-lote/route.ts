@@ -214,7 +214,7 @@ export async function GET(req: Request) {
         : det.cargosContabeis.length > 1
           ? det.cargosContabeis.map(cg => ({
               cargo: cg,
-              vagas: item.vagas || "-",
+              vagas: "Ver edital",
               salario: "Ver edital",
               nivel: (() => {
                 const cl = cg.toLowerCase();

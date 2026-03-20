@@ -1091,7 +1091,17 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
         // PDF tem prioridade sobre HTML para todos os campos
         if (pdf.banca          && pdf.banca          !== "-") det.banca          = pdf.banca;
         if (pdf.dataProva      && pdf.dataProva      !== "-") det.dataProva      = pdf.dataProva;
-        if (pdf.dataResultado  && pdf.dataResultado  !== "-") det.dataResultado  = pdf.dataResultado;
+        if (pdf.dataResultado && pdf.dataResultado !== "-") {
+          // Só aceita resultado se for POSTERIOR à prova (evita datas de publicação do edital)
+          const toTs = (d: string) => {
+            const [dd,mm,yy] = d.split("/").map(Number);
+            return new Date(yy, mm-1, dd).getTime();
+          };
+          const provaTs = det.dataProva && det.dataProva !== "-" ? toTs(det.dataProva) : 0;
+          if (provaTs === 0 || toTs(pdf.dataResultado) > provaTs) {
+            det.dataResultado = pdf.dataResultado;
+          }
+        }
         if (pdf.requisito      && pdf.requisito      !== "-") det.requisito      = pdf.requisito;
         if (pdf.cargosContabeis && pdf.cargosContabeis.length > 0) {
           det.cargosContabeis = pdf.cargosContabeis;
@@ -1288,10 +1298,10 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
         // Estratégia 2: usa cargosContabeis do edital sem salário individual
         : det.cargosContabeis.length > 1
           ? det.cargosContabeis.map(cg => ({
-              cargo:  cg,
-              vagas:  item.vagas || "-",   // vagas totais — não temos por cargo
-              salario: "Ver edital",        // salário individual desconhecido
-              nivel:  detectNivel(item.nivel || "Superior", cg),
+              cargo:   cg,
+              vagas:   "Ver edital",  // vagas por cargo desconhecidas (total do edital não se aplica)
+              salario: "Ver edital",  // salário individual desconhecido
+              nivel:   detectNivel(item.nivel || "Superior", cg),
             }))
           : [];
 

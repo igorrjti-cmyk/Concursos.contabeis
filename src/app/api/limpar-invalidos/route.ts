@@ -74,21 +74,54 @@ export async function GET(req: Request) {
   }
 
   const removidos: string[] = [];
-  const concursosDepois = concursosAntes.filter(c => {
-    if (provaPassou(c.dataProva, hoje)) {
-      removidos.push(`${c.cargo} - ${c.orgao} (prova: ${c.dataProva})`);
-      return false;
-    }
-    if (c.status === "Encerrado") {
-      removidos.push(`${c.cargo} - ${c.orgao} (status: Encerrado)`);
-      return false;
-    }
-    if (inscricaoEncerradaHaMuito(c.inscricaoAte, hoje) && c.dataProva === "-") {
-      removidos.push(`${c.cargo} - ${c.orgao} (inscrição vencida há >90 dias, sem data de prova)`);
-      return false;
-    }
-    return true;
-  });
+  const seenIds = new Set<string>();
+
+  // Termos genéricos que não são bancas reais
+  const BANCAS_INVALIDAS = new Set([
+    "ORGANIZADORA", "ORGANIZAÇÃO", "ORGANIZACAO", "EMPRESA", "COMISSÃO",
+    "COMISSAO", "SECRETARIA", "A EMPRESA", "ENTIDADE", "CONTRATADA",
+  ]);
+
+  const concursosDepois = concursosAntes
+    .map(c => {
+      // Corrige banca genérica → "-"
+      if (c.banca && BANCAS_INVALIDAS.has(c.banca.toUpperCase().trim())) {
+        return { ...c, banca: "-" };
+      }
+      // Corrige dataResultado anterior à prova (erro de parsing do PDF)
+      if (c.dataProva && c.dataProva !== "-" && c.dataResultado && c.dataResultado !== "-") {
+        const toTs = (d: string) => {
+          const p = d.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+          return p ? new Date(+p[3], +p[2]-1, +p[1]).getTime() : 0;
+        };
+        if (toTs(c.dataResultado) <= toTs(c.dataProva)) {
+          return { ...c, dataResultado: "-" };
+        }
+      }
+      return c;
+    })
+    .filter(c => {
+      // Remove duplicatas por id
+      if (seenIds.has(c.id)) {
+        removidos.push(`${c.cargo} - ${c.orgao} (duplicata: ${c.id})`);
+        return false;
+      }
+      seenIds.add(c.id);
+
+      if (provaPassou(c.dataProva, hoje)) {
+        removidos.push(`${c.cargo} - ${c.orgao} (prova: ${c.dataProva})`);
+        return false;
+      }
+      if (c.status === "Encerrado") {
+        removidos.push(`${c.cargo} - ${c.orgao} (status: Encerrado)`);
+        return false;
+      }
+      if (inscricaoEncerradaHaMuito(c.inscricaoAte, hoje) && c.dataProva === "-") {
+        removidos.push(`${c.cargo} - ${c.orgao} (inscrição vencida há >90 dias, sem data de prova)`);
+        return false;
+      }
+      return true;
+    });
 
   if (removidos.length === 0) {
     return NextResponse.json({
