@@ -639,6 +639,16 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
     ehProcessoSeletivo: false,
   };
 
+  // Valida se uma data extraída faz sentido para um concurso público atual
+  // Rejeita datas anteriores a 2024 ou mais de 2 anos no futuro
+  function dataValida(d: string): boolean {
+    const m = d.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!m) return false;
+    const ano = parseInt(m[3]);
+    const anoAtual = new Date().getFullYear();
+    return ano >= 2024 && ano <= anoAtual + 2;
+  }
+
   // ── Converte datas por extenso para DD/MM/AAAA ──────────────────────────────
   // Ex: "17 de maio de 2026" → "17/05/2026"
   const MESES: Record<string, string> = {
@@ -706,7 +716,7 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
   ];
   for (const re of provaRe) {
     const m = textoNorm.match(re);
-    if (m?.[1]) { out.dataProva = m[1]; break; }
+    if (m?.[1] && dataValida(m[1])) { out.dataProva = m[1]; break; }
   }
 
   // Data do resultado — também usa textoNorm (datas por extenso convertidas)
@@ -721,6 +731,7 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
   for (const re of resRe) {
     const m = textoNorm.match(re);
     if (!m?.[1] || m[1] === out.dataProva) continue;
+    if (!dataValida(m[1])) continue; // rejeita datas absurdas
     // Só aceita se não houver data de prova, ou se resultado for POSTERIOR à prova
     if (out.dataProva && out.dataProva !== "-" && toTs(m[1]) <= toTs(out.dataProva)) continue;
     out.dataResultado = m[1];

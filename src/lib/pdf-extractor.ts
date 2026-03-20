@@ -145,6 +145,15 @@ function extrairBanca(texto: string): string {
   return "-";
 }
 
+// Valida se a data extraída faz sentido para concurso atual (2024 em diante)
+function dataValidaPDF(d: string): boolean {
+  const m = d.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return false;
+  const ano = parseInt(m[3]);
+  const anoAtual = new Date().getFullYear();
+  return ano >= 2024 && ano <= anoAtual + 2;
+}
+
 function extrairCronograma(textoNorm: string): { dataProva: string; dataResultado: string } {
   let dataProva = "-";
   let dataResultado = "-";
@@ -159,7 +168,7 @@ function extrairCronograma(textoNorm: string): { dataProva: string; dataResultad
   ];
   for (const re of provaPatterns) {
     const m = secao.match(re);
-    if (m?.[1]) { dataProva = m[1]; break; }
+    if (m?.[1] && dataValidaPDF(m[1])) { dataProva = m[1]; break; }
   }
   const resPatterns = [
     /divulga[cç][aã]o\s+(?:do\s+)?resultado[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
@@ -168,7 +177,7 @@ function extrairCronograma(textoNorm: string): { dataProva: string; dataResultad
   ];
   for (const re of resPatterns) {
     const m = secao.match(re);
-    if (m?.[1] && m[1] !== dataProva) { dataResultado = m[1]; break; }
+    if (m?.[1] && m[1] !== dataProva && dataValidaPDF(m[1])) { dataResultado = m[1]; break; }
   }
   return { dataProva, dataResultado };
 }
@@ -207,7 +216,7 @@ function extrairDataResultado(textoNorm: string, dataProva: string): string {
   ];
   for (const re of padroes) {
     const m = textoNorm.match(re);
-    if (m?.[1] && m[1] !== dataProva) return m[1];
+    if (m?.[1] && m[1] !== dataProva && dataValidaPDF(m[1])) return m[1];
   }
   return "-";
 }
