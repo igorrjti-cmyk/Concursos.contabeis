@@ -56,12 +56,12 @@ export async function GET(req: Request) {
   }
 
   const duracaoMs = Date.now() - inicio;
-  console.log(`[CRON] ${lotesOk}/${TOTAL_LOTES} lotes OK | ${totalAcumulado} concursos | ${duracaoMs}ms`);
+  console.log(`[CRON] ${lotesOk}/${totalLotes} lotes OK | ${totalAcumulado} concursos | ${duracaoMs}ms`);
 
   return NextResponse.json({
     ok: erros.length === 0,
     lotesOk,
-    totalLotes: TOTAL_LOTES,
+    totalLotes,
     totalAcumulado,
     duracaoMs,
     erros: erros.length > 0 ? erros : undefined,
