@@ -542,6 +542,28 @@ function HomeContent() {
       const canvasFeed = await h2c(elFeed, { scale: 2.25, backgroundColor: null, useCORS: true });
       const feedBase64 = canvasFeed.toDataURL("image/png");
 
+      // Gera stories 9:16 — scale 4 → 1080×1920px real
+      // Se o card de stories não estiver visível, gera a partir do feed redimensionado
+      let storiesBase64: string | null = null;
+      const elStories = document.getElementById("card-" + c.id + "-stories");
+      if (elStories) {
+        const canvasStories = await h2c(elStories, { scale: 4, backgroundColor: null, useCORS: true });
+        storiesBase64 = canvasStories.toDataURL("image/png");
+      } else {
+        // Fallback: redimensiona o feed para formato stories (adiciona fundo e centraliza)
+        const canvasStories = document.createElement("canvas");
+        canvasStories.width  = 1080;
+        canvasStories.height = 1920;
+        const ctx = canvasStories.getContext("2d")!;
+        // Fundo escuro igual ao tema do painel
+        ctx.fillStyle = "#060E20";
+        ctx.fillRect(0, 0, 1080, 1920);
+        // Centraliza o feed (1080×1350) verticalmente no stories (1080×1920)
+        const offsetY = (1920 - 1350) / 2;
+        ctx.drawImage(canvasFeed, 0, offsetY, 1080, 1350);
+        storiesBase64 = canvasStories.toDataURL("image/png");
+      }
+
       const legenda = gerarLegenda(c);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -555,7 +577,7 @@ function HomeContent() {
       await new Promise<void>((resolve, reject) => {
         chrome.runtime.sendMessage(
           EXT_ID,
-          { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64: null, legenda },
+          { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64, legenda },
           (res: { ok: boolean } | undefined) => {
             if (chrome.runtime.lastError || !res?.ok) {
               reject(new Error(chrome.runtime.lastError?.message || "Extensão não encontrada. Verifique se está instalada e ativa no Chrome."));
@@ -566,7 +588,7 @@ function HomeContent() {
         );
       });
 
-      alert("✅ Publicação iniciada! O Instagram vai abrir para o feed.");
+      alert("✅ Publicação iniciada!\n\n1️⃣ Feed (4:5) será publicado agora.\n2️⃣ Stories (9:16) abrirá em modo mobile automaticamente em seguida.");
       await marcarPostado(c);
 
     } catch (e) {
