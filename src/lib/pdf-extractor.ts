@@ -94,19 +94,7 @@ export function extrairTabelaCargos(texto: string, textoCompleto?: string): Carg
   const textoSrc = textoCompleto ?? texto;
   const resultado: CargoDetalhe[] = [];
   const seen = new Set<string>();
-  const linhas = texto.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 3);
-
-  // Padrões para detectar linha de cargo com vagas e salário
-  const padroes: RegExp[] = [
-    // "Contador  5 vagas  R$ 5.409,87  Superior"
-    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d\n]{3,60}?)\s+(\d+(?:\s+vagas?)?(?:\s*\+\s*CR)?|CR|cadastro\s+reserva)\s+R\$\s*([\d.,]+)/i,
-    // "01. Contador | 5 vagas | R$ 5.409,87"
-    /^(?:\d+[.\-\s]+)?([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d|]{3,50}?)\s*\|\s*(\d+(?:\s+vagas?)?|CR)\s*\|\s*R\$\s*([\d.,]+)/i,
-    // "Contador: 5 vagas, salário R$ 5.409,87"
-    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d\n]{3,50}?):\s*(\d+)\s*vagas?,\s*(?:salário|remuneração)[:\s]+R\$\s*([\d.,]+)/i,
-    // Tabela com espaços duplos
-    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-záéíóúâêîôûãõç\s]{3,50}?)\s{2,}(\d{1,3}(?:\s+vagas?)?)\s{2,}R\$\s*([\d.,]+)/i,
-  ];
+  const linhas = textoSrc.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 3);
 
   const KW_CONTABIL_LOCAL = [
     "contador", "contadora", "contábil", "contabilidade",
@@ -127,87 +115,76 @@ export function extrairTabelaCargos(texto: string, textoCompleto?: string): Carg
     return "Superior";
   }
 
+  // Estratégia 1: linha com cargo + vagas + salário juntos
+  const padroes: RegExp[] = [
+    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d\n]{3,60}?)\s+(\d+(?:\s+vagas?)?(?:\s*\+\s*CR)?|CR|cadastro\s+reserva)\s+R\$\s*([\d.,]+)/i,
+    /^(?:\d+[.\-\s]+)?([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d|]{3,50}?)\s*\|\s*(\d+(?:\s+vagas?)?|CR)\s*\|\s*R\$\s*([\d.,]+)/i,
+    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d\n]{3,50}?):\s*(\d+)\s*vagas?,\s*(?:salário|remuneração)[:\s]+R\$\s*([\d.,]+)/i,
+    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-záéíóúâêîôûãõç\s]{3,50}?)\s{2,}(\d{1,3}(?:\s+vagas?)?)\s{2,}R\$\s*([\d.,]+)/i,
+  ];
+
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i];
     if (!ehContabil(linha)) continue;
-
     for (const re of padroes) {
       const m = linha.match(re);
       if (m) {
         const cargo = m[1].trim().replace(/\s+/g, " ");
-        const vagasRaw = m[2].trim();
-        const salarioRaw = m[3].trim();
         const key = cargo.toLowerCase();
-
         if (seen.has(key)) break;
         seen.add(key);
-
         const contexto = linhas.slice(i, i + 3).join(" ");
-        const nivel = detectNivelLocal(contexto);
-
-        let requisito = "Nível Superior";
-        if (contexto.toLowerCase().includes("crc")) requisito = "Graduação + CRC";
-        else if (
-          contexto.toLowerCase().includes("ciências contábeis") ||
-          contexto.toLowerCase().includes("ciencias contabeis")
-        ) requisito = "Graduação - Ciências Contábeis";
-
         resultado.push({
           cargo: cargo.charAt(0).toUpperCase() + cargo.slice(1),
-          vagas: vagasRaw.match(/\d/) ? vagasRaw.replace(/vagas?/i, "").trim() + " vagas" : vagasRaw,
-          salario: "R$ " + salarioRaw,
-          nivel,
-          requisito,
+          vagas: m[2].match(/\d/) ? m[2].replace(/vagas?/i, "").trim() + " vagas" : m[2].trim(),
+          salario: "R$ " + m[3].trim(),
+          nivel: detectNivelLocal(contexto),
+          requisito: contexto.toLowerCase().includes("crc")
+            ? "Graduação + CRC"
+            : (contexto.toLowerCase().includes("ciências contábeis") || contexto.toLowerCase().includes("ciencias contabeis"))
+              ? "Graduação - Ciências Contábeis"
+              : "Nível Superior",
         });
         break;
       }
     }
   }
 
-  // Estratégia 2: extração por seção (CARGO: / VAGAS: / SALÁRIO:)
-  // Cobre editais onde cada cargo vem em bloco separado
+  // Estratégia 2: blocos separados por "Cargo:" / "Vagas:" / "Salário:"
   if (resultado.length === 0) {
-    const blocos = textoSrc.split(/(?:^|
-)(?:cargo|função|emprego)[:\s]/im);
-    for (const bloco of blocos.slice(1, 11)) {
-      const primLinha = bloco.split("
-")[0]?.trim() ?? "";
-      if (!primLinha || !ehContabil(primLinha)) continue;
-      if (seen.has(primLinha.toLowerCase())) continue;
-
-      const vagasM = bloco.match(/vagas?\s*[:\-]?\s*(\d+|cadastro\s+reserva|CR)/i);
-      const salM   = bloco.match(/(?:salário|remuneração|vencimento)\s*[:\-]?\s*R\$\s*([\d.,]+)/i);
-
+    const reBloco = /(?:cargo|função|emprego)\s*[:\-]\s*([^\n]{3,60})/gi;
+    let m: RegExpExecArray | null;
+    while ((m = reBloco.exec(textoSrc)) !== null) {
+      const cargo = m[1].trim();
+      if (!ehContabil(cargo) || seen.has(cargo.toLowerCase())) continue;
+      const trecho = textoSrc.slice(m.index, m.index + 400);
+      const vagasM  = trecho.match(/vagas?\s*[:\-]?\s*(\d+|CR)/i);
+      const salM    = trecho.match(/(?:salário|remuneração|vencimento)\s*[:\-]?\s*R\$\s*([\d.,]+)/i);
       if (!vagasM && !salM) continue;
-      seen.add(primLinha.toLowerCase());
-
+      seen.add(cargo.toLowerCase());
       resultado.push({
-        cargo:    primLinha.charAt(0).toUpperCase() + primLinha.slice(1),
-        vagas:    vagasM ? vagasM[1].trim() + " vagas" : "-",
-        salario:  salM   ? "R$ " + salM[1]  : "Ver edital",
-        nivel:    detectNivelLocal(bloco.slice(0, 300)),
-        requisito: bloco.toLowerCase().includes("crc")
-          ? "Graduação + CRC"
-          : bloco.toLowerCase().includes("ciências contábeis")
-            ? "Graduação - Ciências Contábeis"
-            : "Nível Superior",
+        cargo: cargo.charAt(0).toUpperCase() + cargo.slice(1),
+        vagas:   vagasM ? vagasM[1].trim() + " vagas" : "-",
+        salario: salM   ? "R$ " + salM[1]             : "Ver edital",
+        nivel:   detectNivelLocal(trecho.slice(0, 300)),
+        requisito: trecho.toLowerCase().includes("crc") ? "Graduação + CRC" : "Nível Superior",
       });
     }
   }
 
   // Estratégia 3: inline "(Cargo: X vagas, R$ Y)"
   if (resultado.length === 0) {
-    const inlineRe = /([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-záéíóúâêîôûãõç\s]{3,40}?)\s*[:\(]\s*(\d+)\s*vagas?,\s*R\$\s*([\d.,]+)/gi;
-    let m;
-    while ((m = inlineRe.exec(textoSrc)) !== null) {
-      const cargo = m[1].trim();
+    const reInline = /([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-záéíóúâêîôûãõç\s]{3,40}?)\s*[:\(]\s*(\d+)\s*vagas?,\s*R\$\s*([\d.,]+)/gi;
+    let mi: RegExpExecArray | null;
+    while ((mi = reInline.exec(textoSrc)) !== null) {
+      const cargo = mi[1].trim();
       if (!ehContabil(cargo) || seen.has(cargo.toLowerCase())) continue;
       seen.add(cargo.toLowerCase());
       resultado.push({
-        cargo: cargo.charAt(0).toUpperCase() + cargo.slice(1),
-        vagas: m[2] + " vagas",
-        salario: "R$ " + m[3],
-        nivel: "Superior",
+        cargo:    cargo.charAt(0).toUpperCase() + cargo.slice(1),
+        vagas:    mi[2] + " vagas",
+        salario:  "R$ " + mi[3],
+        nivel:    "Superior",
         requisito: "Nível Superior",
       });
     }
