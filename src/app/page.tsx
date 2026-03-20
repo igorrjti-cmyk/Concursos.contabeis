@@ -530,19 +530,15 @@ function HomeContent() {
 
   // Envia só o feed para a extensão publicar no Instagram
   // Stories não funciona via web — disponível apenas para download manual
-  const publicarInstagram = async (c: Concurso) => {
-    setDownloadingId(c.id + "ig");
+  const publicarInstagram = async (c: Concurso, modo: "feed" | "stories" | "ambos" = "ambos") => {
+    setDownloadingId(c.id + "ig" + modo);
     try {
       await document.fonts.ready;
-
-      // Usa renderCardCanvas — gera o card direto no canvas sem precisar do DOM.
-      // Funciona em qualquer aba, sem precisar ir para "Cards" primeiro.
       const { renderCardCanvas } = await import("@/lib/card-renderer");
 
-      const canvasFeed    = await renderCardCanvas(c, "feed");
-      const canvasStories = await renderCardCanvas(c, "stories");
-      const feedBase64    = canvasFeed.toDataURL("image/png");
-      const storiesBase64 = canvasStories.toDataURL("image/png");
+      // Gera apenas o que for necessário para o modo escolhido
+      const feedBase64    = (modo === "feed"    || modo === "ambos") ? (await renderCardCanvas(c, "feed")).toDataURL("image/png")    : null;
+      const storiesBase64 = (modo === "stories" || modo === "ambos") ? (await renderCardCanvas(c, "stories")).toDataURL("image/png") : null;
 
       const legenda = gerarLegenda(c);
 
@@ -568,7 +564,12 @@ function HomeContent() {
         );
       });
 
-      alert("✅ Publicação iniciada!\n\n1️⃣ Feed (4:5) será publicado agora.\n2️⃣ Stories (9:16) abrirá em modo mobile automaticamente em seguida.");
+      const msgs: Record<string, string> = {
+        feed:    "✅ Feed (4:5) enviado para publicação!",
+        stories: "✅ Stories (9:16) enviado! O Instagram abrirá em modo mobile.",
+        ambos:   "✅ Publicação iniciada!\n\n1️⃣ Feed (4:5) será publicado agora.\n2️⃣ Stories (9:16) abrirá em modo mobile automaticamente em seguida.",
+      };
+      alert(msgs[modo]);
       await marcarPostado(c);
 
     } catch (e) {
@@ -1082,22 +1083,50 @@ function HomeContent() {
                       {downloadingId === c.id + cardFormato ? "Gerando..." : "Baixar PNG"}
                     </button>
                     <Btn color="#00C896" onClick={() => copyLegenda(c)}>{copied === c.id ? "✓ Copiado!" : "Legenda"}</Btn>
+                    {/* Feed */}
                     <button
-                      onClick={() => publicarInstagram(c)}
-                      disabled={downloadingId === c.id + "ig"}
-                      title="Publica o feed (4:5) via extensão do Chrome — Stories somente manual pelo celular"
+                      onClick={() => publicarInstagram(c, "feed")}
+                      disabled={!!downloadingId}
+                      title="Publica só o Feed (4:5) via extensão"
                       style={{
-                        background: downloadingId === c.id + "ig"
-                          ? "rgba(225,48,108,.1)"
-                          : "linear-gradient(135deg,#E1306C,#C13584)",
-                        color: downloadingId === c.id + "ig" ? "#E1306C" : "#fff",
-                        border: "none", borderRadius: 9, padding: "8px 14px",
-                        cursor: downloadingId === c.id + "ig" ? "not-allowed" : "pointer",
-                        fontSize: 11, fontWeight: 700,
-                        opacity: downloadingId === c.id + "ig" ? .6 : 1,
+                        background: downloadingId === c.id + "igfeed" ? "rgba(225,48,108,.1)" : "linear-gradient(135deg,#E1306C,#C13584)",
+                        color: downloadingId === c.id + "igfeed" ? "#E1306C" : "#fff",
+                        border: "none", borderRadius: 9, padding: "8px 12px",
+                        cursor: downloadingId ? "not-allowed" : "pointer",
+                        fontSize: 11, fontWeight: 700, opacity: downloadingId ? .6 : 1,
                       }}
                     >
-                      {downloadingId === c.id + "ig" ? "Publicando..." : "📲 Publicar"}
+                      {downloadingId === c.id + "igfeed" ? "..." : "📷 Feed"}
+                    </button>
+                    {/* Stories */}
+                    <button
+                      onClick={() => publicarInstagram(c, "stories")}
+                      disabled={!!downloadingId}
+                      title="Publica só os Stories (9:16) via extensão em modo mobile"
+                      style={{
+                        background: downloadingId === c.id + "igstories" ? "rgba(225,48,108,.1)" : "linear-gradient(135deg,#833AB4,#C13584)",
+                        color: downloadingId === c.id + "igstories" ? "#C13584" : "#fff",
+                        border: "none", borderRadius: 9, padding: "8px 12px",
+                        cursor: downloadingId ? "not-allowed" : "pointer",
+                        fontSize: 11, fontWeight: 700, opacity: downloadingId ? .6 : 1,
+                      }}
+                    >
+                      {downloadingId === c.id + "igstories" ? "..." : "📱 Stories"}
+                    </button>
+                    {/* Ambos */}
+                    <button
+                      onClick={() => publicarInstagram(c, "ambos")}
+                      disabled={!!downloadingId}
+                      title="Publica Feed + Stories em sequência"
+                      style={{
+                        background: downloadingId === c.id + "igambos" ? "rgba(225,48,108,.1)" : "linear-gradient(135deg,#E1306C,#833AB4)",
+                        color: downloadingId === c.id + "igambos" ? "#E1306C" : "#fff",
+                        border: "none", borderRadius: 9, padding: "8px 12px",
+                        cursor: downloadingId ? "not-allowed" : "pointer",
+                        fontSize: 11, fontWeight: 700, opacity: downloadingId ? .6 : 1,
+                      }}
+                    >
+                      {downloadingId === c.id + "igambos" ? "Publicando..." : "📲 Feed+Stories"}
                     </button>
                     <Btn color="#FFB800" onClick={() => marcarPostado(c)} disabled={jaPostado(c.id)}>
                       {jaPostado(c.id) ? "Postado" : "Marcar"}
