@@ -75,6 +75,101 @@ async function baixarPDF(url: string): Promise<ArrayBuffer | null> {
   }
 }
 
+// Detalhe de um cargo extraído do edital PDF
+export interface CargoDetalhe {
+  cargo: string;
+  vagas: string;
+  salario: string;
+  nivel: string;
+  requisito: string;
+}
+
+/**
+ * Extrai tabela de cargos com vagas e salários do texto do PDF.
+ * Suporta padrões comuns em editais brasileiros:
+ *   "Contador  5 vagas  R$ 5.000,00  Superior"
+ *   "01 - Contador | 3 | R$ 4.500,00 | Graduação"
+ */
+export function extrairTabelaCargos(texto: string): CargoDetalhe[] {
+  const resultado: CargoDetalhe[] = [];
+  const seen = new Set<string>();
+  const linhas = texto.split(/
+/).map(l => l.trim()).filter(l => l.length > 3);
+
+  // Padrões para detectar linha de cargo com vagas e salário
+  const padroes = [
+    // "Contador  5 vagas  R$ 5.409,87  Superior"
+    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d
+]{3,60}?)\s+(\d+(?:\s+vagas?)?(?:\s*\+\s*CR)?|CR|cadastro\s+reserva)\s+R\$\s*([\d.,]+)/i,
+    // "01. Contador | 5 vagas | R$ 5.409,87"
+    /^(?:\d+[\.\-\s]+)?([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d|]{3,50}?)\s*\|\s*(\d+(?:\s+vagas?)?|CR)\s*\|\s*R\$\s*([\d.,]+)/i,
+    // "Contador: 5 vagas, salário R$ 5.409,87"
+    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][^\d
+]{3,50}?):\s*(\d+)\s*vagas?,\s*(?:salário|remuneração)[:\s]+R\$\s*([\d.,]+)/i,
+    // Tabela sem separador mas com padrão numérico claro
+    /^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-záéíóúâêîôûãõç\s]{3,50}?)\s{2,}(\d{1,3}(?:\s+vagas?)?)\s{2,}R\$\s*([\d.,]+)/i,
+  ];
+
+  const KW_CONTABIL_LOCAL = [
+    "contador", "contadora", "contábil", "contabilidade",
+    "auditor", "fiscal", "tribut", "técnico em cont", "tecnico em cont",
+    "analista cont", "controle interno",
+  ];
+
+  function ehContabil(s: string): boolean {
+    const sl = s.toLowerCase();
+    return KW_CONTABIL_LOCAL.some(kw => sl.includes(kw));
+  }
+
+  function detectNivelLocal(s: string): string {
+    const l = s.toLowerCase();
+    if (l.includes("superior")) return "Superior";
+    if (l.includes("técnico") || l.includes("tecnico")) return "Médio/Técnico";
+    if (l.includes("médio") || l.includes("medio")) return "Médio";
+    return "Superior";
+  }
+
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = linhas[i];
+    if (!ehContabil(linha)) continue;
+
+    for (const re of padroes) {
+      const m = linha.match(re);
+      if (m) {
+        const cargo = m[1].trim().replace(/\s+/g, " ");
+        const vagasRaw = m[2].trim();
+        const salarioRaw = m[3].trim();
+        const key = cargo.toLowerCase();
+
+        if (seen.has(key)) break;
+        seen.add(key);
+
+        // Detecta nível na linha atual ou próximas 2
+        const contexto = linhas.slice(i, i + 3).join(" ");
+        const nivel = detectNivelLocal(contexto);
+
+        // Detecta requisito
+        let requisito = "Nível Superior";
+        if (contexto.toLowerCase().includes("crc")) requisito = "Graduação + CRC";
+        else if (contexto.toLowerCase().includes("ciências contábeis") || contexto.toLowerCase().includes("ciencias contabeis")) {
+          requisito = "Graduação - Ciências Contábeis";
+        }
+
+        resultado.push({
+          cargo: cargo.charAt(0).toUpperCase() + cargo.slice(1),
+          vagas: vagasRaw.match(/\d/) ? vagasRaw.replace(/vagas?/i, "").trim() + " vagas" : vagasRaw,
+          salario: "R$ " + salarioRaw,
+          nivel,
+          requisito,
+        });
+        break;
+      }
+    }
+  }
+
+  return resultado.slice(0, 10); // máx 10 cargos por edital
+}
+
 async function extrairTextoPDF(buffer: ArrayBuffer): Promise<string> {
   try {
     const { extractText } = await import("unpdf");
@@ -109,7 +204,10 @@ export async function extrairDetalhesDoPDF(pdfUrl: string): Promise<Partial<Deta
 
   console.log(`[PDF] banca=${banca} prova=${dataProva} resultado=${dataResultado}`);
 
-  return { banca, dataProva, dataResultado, cargosContabeis, requisito, linkEdital: "" };
+  const cargosDetalhados = extrairTabelaCargos(texto);
+  console.log(`[PDF] cargosDetalhados=${cargosDetalhados.length}`);
+
+  return { banca, dataProva, dataResultado, cargosContabeis, requisito, linkEdital: "", cargosDetalhados };
 }
 
 function extrairBanca(texto: string): string {

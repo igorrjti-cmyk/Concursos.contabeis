@@ -59,6 +59,15 @@ const NIVEIS = ["Todos", "Superior", "Médio/Técnico", "Médio/Técnico/Superio
 
 const UFS = ["Todos","AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO","Nacional"];
 
+// Exibe cargo — com explosão de multi-cargo, cada card tem 1 cargo.
+// Mantido para compatibilidade com dados legados que possam ter cargos combinados.
+function cargoDisplay(cargo: string): string {
+  if (cargo.length <= 50) return cargo;
+  const partes = cargo.split(",").map(p => p.trim()).filter(Boolean);
+  if (partes.length > 1) return `${partes[0]} +${partes.length - 1}`;
+  return cargo.slice(0, 48) + "…";
+}
+
 function nivelDisplay(cargo: string, nivel: string): string {
   const c = cargo.toLowerCase();
   const ehSuperior = ["contador", "contadora", "auditor", "analista contábil",
@@ -864,7 +873,7 @@ function HomeContent() {
                     {/* Info principal */}
                     <div style={{ flex: 1, minWidth: 150 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>{c.cargo}</span>
+                        <span style={{ color: "#fff", fontWeight: 800, fontSize: 14 }} title={c.cargo}>{cargoDisplay(c.cargo)}</span>
                         <BadgeUrgente dias={c.diasRestantes} />
                         {postado && (
                           <span style={{ background: "rgba(0,200,150,.12)", color: "#00C896", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
@@ -884,15 +893,22 @@ function HomeContent() {
                       {/* Cargos contábeis inline quando há múltiplos */}
                       {c.cargosContabeis && c.cargosContabeis.length > 1 && (
                         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
-                          {c.cargosContabeis.map(cg => (
+                          {c.cargosContabeis.slice(0, 3).map(cg => (
                             <span key={cg} style={{
                               background: "rgba(0,200,150,.06)", border: "1px solid rgba(0,200,150,.15)",
                               color: "rgba(0,200,150,.8)", fontSize: 9, fontWeight: 700,
                               padding: "1px 6px", borderRadius: 4,
-                            }}>
-                              {cg}
+                            }} title={cg}>
+                              {cg.length > 20 ? cg.slice(0,18)+"…" : cg}
                             </span>
                           ))}
+                          {c.cargosContabeis.length > 3 && (
+                            <span style={{
+                              background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)",
+                              color: "rgba(255,255,255,.4)", fontSize: 9, fontWeight: 700,
+                              padding: "1px 6px", borderRadius: 4,
+                            }}>+{c.cargosContabeis.length - 3}</span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1298,7 +1314,7 @@ function HomeContent() {
                               </div>
                             </div>
                             <div style={{ flex: 1 }}>
-                              <div style={{ color: passada ? "rgba(255,255,255,.5)" : "#fff", fontWeight: 700, fontSize: 14 }}>{c.cargo}</div>
+                              <div style={{ color: passada ? "rgba(255,255,255,.5)" : "#fff", fontWeight: 700, fontSize: 14 }} title={c.cargo}>{cargoDisplay(c.cargo)}</div>
                               <div style={{ color: passada ? "rgba(0,200,150,.5)" : "#00C896", fontSize: 12, marginTop: 2 }}>{c.orgao} — {c.estado}</div>
                               {c.banca !== "-" && <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, marginTop: 1 }}>{c.banca}</div>}
                             </div>

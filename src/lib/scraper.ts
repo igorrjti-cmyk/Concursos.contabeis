@@ -631,14 +631,15 @@ export interface DetalhesEdital {
   linkEdital: string;
   cargosContabeis: string[];
   requisito: string;
-  ehProcessoSeletivo: boolean; // true = descartar — é PS, não concurso público
+  ehProcessoSeletivo: boolean;
+  cargosDetalhados?: { cargo: string; vagas: string; salario: string; nivel: string; requisito: string }[];
 }
 
 export function extrairDetalhes(texto: string): DetalhesEdital {
   const out: DetalhesEdital = {
     dataProva: "-", dataResultado: "-", banca: "-",
     linkEdital: "", cargosContabeis: [], requisito: "-",
-    ehProcessoSeletivo: false,
+    ehProcessoSeletivo: false, cargosDetalhados: [],
   };
 
   // Valida se uma data extraída faz sentido para um concurso público atual
@@ -780,7 +781,20 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
           b.toUpperCase().includes(candidato.toUpperCase().slice(0, 6))
         );
         if (bancaMatch) { out.banca = bancaMatch; break; }
-        if (candidato.length >= 3 && candidato.length <= 40) {
+        // Rejeita palavras genéricas que não são nomes de banca
+        const TERMOS_GENERICOS_BANCA = new Set([
+          "ORGANIZADORA", "ORGANIZACAO", "ORGANIZAÇÃO", "EMPRESA", "INSTITUTO",
+          "FUNDACAO", "FUNDAÇÃO", "SECRETARIA", "PREFEITURA", "CAMARA", "CÂMARA",
+          "COMISSAO", "COMISSÃO", "CONCURSO", "PUBLICA", "PÚBLICA", "A EMPRESA",
+          "ENTIDADE", "CONTRATADA", "RESPONSAVEL", "RESPONSÁVEL",
+        ]);
+        const primeiraPalavra = candidato.toUpperCase().split(" ")[0];
+        if (
+          candidato.length >= 3 &&
+          candidato.length <= 40 &&
+          !TERMOS_GENERICOS_BANCA.has(candidato.toUpperCase()) &&
+          !TERMOS_GENERICOS_BANCA.has(primeiraPalavra)
+        ) {
           out.banca = candidato.toUpperCase();
           break;
         }
@@ -1082,6 +1096,9 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
         if (pdf.cargosContabeis && pdf.cargosContabeis.length > 0) {
           det.cargosContabeis = pdf.cargosContabeis;
         }
+        if (pdf.cargosDetalhados && pdf.cargosDetalhados.length > 0) {
+          det.cargosDetalhados = pdf.cargosDetalhados;
+        }
       }
     } catch {
       // PDF indisponível ou erro — mantém dados do HTML
@@ -1164,7 +1181,7 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     const resultados = await Promise.all(
       lote.map(item => item.linkNoticia
         ? scrapeDetalhe(item.linkNoticia)
-        : Promise.resolve({ dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "", cargosContabeis: [], requisito: "-", ehProcessoSeletivo: false } as DetalhesEdital)
+        : Promise.resolve({ dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "", cargosContabeis: [], requisito: "-", ehProcessoSeletivo: false, cargosDetalhados: [] } as DetalhesEdital)
       )
     );
     detalhes.push(...resultados);
@@ -1247,6 +1264,45 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
         const hojeFinal = new Date(); hojeFinal.setHours(0, 0, 0, 0);
         if (dtFinal < hojeFinal) continue; // prova já passou — descarta
       }
+    }
+
+    // ── Explosão de multi-cargo ────────────────────────────────────────────────
+    // Se o PDF retornou cargos detalhados com salários individuais,
+    // criamos um registro separado por cargo contábil.
+    const cargosDetalhados = det.cargosDetalhados ?? [];
+    const cargosContabeisDetalhados = cargosDetalhados.filter(cd => {
+      const cdLow = cd.cargo.toLowerCase();
+      return CARGO_CONTABIL_KW.some(kw => cdLow.includes(kw));
+    });
+
+    if (cargosContabeisDetalhados.length > 1) {
+      // Edital com múltiplos cargos contábeis com salários distintos → explode
+      const statusFinal = reclassificarStatus(
+        item.status as Concurso["status"], det.dataProva, det.dataResultado
+      );
+      for (const cd of cargosContabeisDetalhados) {
+        completos.push({
+          id:              slugify(cd.cargo + "-" + (item.orgao || "")),
+          cargo:           cd.cargo,
+          cargosContabeis: [cd.cargo],
+          orgao:           item.orgao || "-",
+          estado:          item.estado || "Nacional",
+          vagas:           cd.vagas || item.vagas || "-",
+          salario:         cd.salario || item.salario || "A consultar",
+          inscricao:       item.inscricao || "-",
+          inscricaoAte:    item.inscricaoAte || "Ver edital",
+          diasRestantes:   item.diasRestantes ?? -1,
+          linkNoticia:     item.linkNoticia || "",
+          linkEdital:      det.linkEdital || item.linkNoticia || "",
+          banca:           det.banca !== "-" ? det.banca : (item.banca || "-"),
+          nivel:           cd.nivel || detectNivel(item.nivel || "Superior", cd.cargo),
+          dataProva:       det.dataProva,
+          dataResultado:   det.dataResultado,
+          status:          statusFinal,
+          dataCaptura:     new Date().toISOString(),
+        });
+      }
+      continue; // não executa o push genérico abaixo
     }
 
     completos.push({

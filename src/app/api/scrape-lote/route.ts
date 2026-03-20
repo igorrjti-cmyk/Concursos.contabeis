@@ -137,7 +137,7 @@ export async function GET(req: Request) {
       lote.map(item =>
         item.linkNoticia
           ? scrapeDetalhe(item.linkNoticia)
-          : Promise.resolve({ dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "", cargosContabeis: [], requisito: "-", ehProcessoSeletivo: false })
+          : Promise.resolve({ dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "", cargosContabeis: [], requisito: "-", ehProcessoSeletivo: false, cargosDetalhados: [] })
       )
     );
 
@@ -194,6 +194,51 @@ export async function GET(req: Request) {
 
       // Descarta encerrados que vieram de /concursos/ sem prova futura
       if (statusFinal === "Encerrado") continue;
+
+      // ── Explosão de multi-cargo ────────────────────────────────────────────
+      const CONTABIL_KW_LOTE = [
+        "contador", "contadora", "contábil", "contabilidade", "auditor",
+        "fiscal", "tribut", "técnico em cont", "tecnico em cont", "analista cont",
+        "controle interno",
+      ];
+      const cargosDetalhadosLote = (det.cargosDetalhados ?? []).filter(cd =>
+        CONTABIL_KW_LOTE.some(kw => cd.cargo.toLowerCase().includes(kw))
+      );
+
+      if (cargosDetalhadosLote.length > 1) {
+        // Edital com múltiplos cargos contábeis → explode em registros separados
+        const statusExp = reclassificarStatus(
+          (item.status as import("@/lib/scraper").Concurso["status"]),
+          det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-",
+          det.dataResultado !== "-" ? det.dataResultado : item.dataResultado ?? "-"
+        );
+        for (const cd of cargosDetalhadosLote) {
+          const keyExp = slugify(cd.cargo + "-" + (item.orgao || ""));
+          if (seen.has(keyExp)) continue;
+          seen.add(keyExp);
+          const nivelExp = (() => {
+            const cl = cd.cargo.toLowerCase();
+            if (["contador","auditor","analista contábil"].some(k => cl.includes(k))) return "Superior";
+            if (cl.includes("técnico em contabilidade") || cl.includes("tecnico em contabilidade")) return "Médio/Técnico";
+            return cd.nivel || "Superior";
+          })();
+          novos.push({
+            ...item,
+            id: keyExp,
+            cargo: cd.cargo,
+            nivel: nivelExp,
+            vagas: cd.vagas || item.vagas || "-",
+            salario: cd.salario || item.salario || "A consultar",
+            status: statusExp,
+            banca: det.banca !== "-" ? det.banca : item.banca ?? "-",
+            dataProva: det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-",
+            dataResultado: det.dataResultado !== "-" ? det.dataResultado : item.dataResultado ?? "-",
+            linkEdital: det.linkEdital || item.linkEdital || item.linkNoticia || "",
+            cargosContabeis: [cd.cargo],
+          } as import("@/lib/scraper").Concurso);
+        }
+        continue; // pula o push genérico abaixo
+      }
 
       // Recalcula nível: cargos de Contador/Auditor são sempre Superior
       const nivelContabil = (() => {
