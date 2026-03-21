@@ -191,6 +191,117 @@ function ConfirmModal({ mensagem, onConfirm, onCancel }: { mensagem: string; onC
   );
 }
 
+// ── Componente isolado para botão Publicar com dropdown ─────────────────────
+function CardPublicarBtn({
+  concurso,
+  downloadingId,
+  onPublicar,
+  onAgendar,
+}: {
+  concurso: Concurso;
+  downloadingId: string | null;
+  onPublicar: (modo: "feed" | "stories" | "ambos") => void;
+  onAgendar:  (modo: "feed" | "stories" | "ambos") => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setAberto(false);
+      }
+    };
+    // Pequeno delay para não fechar imediatamente ao abrir
+    const t = setTimeout(() => document.addEventListener("mousedown", handler), 10);
+    return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
+  }, [aberto]);
+
+  const loading = !!downloadingId?.startsWith(concurso.id + "ig");
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={() => !downloadingId && setAberto(a => !a)}
+        style={{
+          background: loading ? "rgba(225,48,108,.15)" : "linear-gradient(135deg,#E1306C,#833AB4)",
+          color: loading ? "#E1306C" : "#fff",
+          border: "none", borderRadius: 9, padding: "9px 18px",
+          cursor: downloadingId ? "not-allowed" : "pointer",
+          fontSize: 12, fontWeight: 800,
+          display: "flex", alignItems: "center", gap: 6,
+          opacity: downloadingId && !loading ? .5 : 1,
+          transition: "opacity .15s",
+        }}
+      >
+        {loading ? "Publicando..." : "📤 Publicar"}
+        <span style={{ fontSize: 8, opacity: .7 }}>{aberto ? "▲" : "▼"}</span>
+      </button>
+
+      {aberto && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 6px)", left: "50%",
+          transform: "translateX(-50%)", zIndex: 9999,
+          background: "#0D1B35",
+          border: "1px solid rgba(255,255,255,.15)",
+          borderRadius: 12, padding: "6px 0",
+          minWidth: 210,
+          boxShadow: "0 -12px 40px rgba(0,0,0,.7)",
+        }}>
+          <div style={{ fontSize: 9, color: "rgba(255,255,255,.3)", fontWeight: 800, padding: "4px 14px 6px", letterSpacing: 1 }}>
+            PUBLICAR AGORA
+          </div>
+          {([
+            { modo: "feed"    as const, label: "📷 Feed",           desc: "1080×1350px" },
+            { modo: "stories" as const, label: "📱 Stories",        desc: "1080×1920px" },
+            { modo: "ambos"   as const, label: "📲 Feed + Stories", desc: "os dois" },
+          ]).map(({ modo, label, desc }) => (
+            <button key={modo}
+              onClick={() => { setAberto(false); onPublicar(modo); }}
+              style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                width: "100%", background: "none", border: "none",
+                color: "#fff", padding: "8px 14px",
+                cursor: "pointer", fontSize: 12, fontWeight: 700,
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(225,48,108,.12)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "none")}
+            >
+              <span>{label}</span>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,.3)", fontWeight: 400 }}>{desc}</span>
+            </button>
+          ))}
+
+          <div style={{ height: 1, background: "rgba(255,255,255,.08)", margin: "4px 0" }} />
+
+          <div style={{ fontSize: 9, color: "rgba(255,184,0,.6)", fontWeight: 800, padding: "6px 14px 4px", letterSpacing: 1 }}>
+            ⏰ AGENDAR
+          </div>
+          {([
+            { modo: "feed"    as const, label: "📷 Feed" },
+            { modo: "stories" as const, label: "📱 Stories" },
+            { modo: "ambos"   as const, label: "📲 Feed + Stories" },
+          ]).map(({ modo, label }) => (
+            <button key={"ag-" + modo}
+              onClick={() => { setAberto(false); onAgendar(modo); }}
+              style={{
+                display: "block", width: "100%", background: "none", border: "none",
+                color: "#FFB800", padding: "7px 14px",
+                cursor: "pointer", fontSize: 11, fontWeight: 600, textAlign: "left",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,184,0,.08)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "none")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HomeContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
@@ -533,11 +644,17 @@ function HomeContent() {
   };
 
   // Toast helper
-  // Fecha dropdown ao clicar fora
+  // Fecha dropdown ao clicar fora (mousedown antes do click, evita race condition)
   useEffect(() => {
-    const handler = () => setDropdownAberto(null);
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Só fecha se o clique foi fora de qualquer elemento com data-dropdown
+      if (!target.closest("[data-dropdown]")) {
+        setDropdownAberto(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   const showToast = (msg: string, tipo: "ok" | "erro" | "info" = "ok") => {
@@ -1200,106 +1317,14 @@ function HomeContent() {
                   <InstagramCard concurso={c} formato={cardFormato} />
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 390 }}>
 
-                    {/* ── LINHA 1: Botão Publicar único com dropdown ── */}
+                    {/* ── LINHA 1: Botão Publicar com dropdown (componente isolado) ── */}
                     <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                      {/* Botão Publicar ▼ */}
-                      <div style={{ position: "relative" }}>
-                        <button
-                          onClick={e => { e.stopPropagation(); setDropdownAberto(dropdownAberto === c.id ? null : c.id); }}
-                          disabled={!!downloadingId}
-                          style={{
-                            background: downloadingId?.startsWith(c.id + "ig")
-                              ? "rgba(225,48,108,.15)"
-                              : "linear-gradient(135deg,#E1306C,#833AB4)",
-                            color: "#fff",
-                            border: "none", borderRadius: 9, padding: "9px 16px",
-                            cursor: downloadingId ? "not-allowed" : "pointer",
-                            fontSize: 12, fontWeight: 800,
-                            display: "flex", alignItems: "center", gap: 6,
-                            opacity: downloadingId && !downloadingId.startsWith(c.id + "ig") ? .5 : 1,
-                          }}
-                        >
-                          {downloadingId?.startsWith(c.id + "ig") ? "Publicando..." : "📤 Publicar"}
-                          <span style={{ fontSize: 9, opacity: .8 }}>
-                            {dropdownAberto === c.id ? "▲" : "▼"}
-                          </span>
-                        </button>
-
-                        {/* Dropdown */}
-                        {dropdownAberto === c.id && (
-                          <div
-                            onClick={e => e.stopPropagation()}
-                            style={{
-                              position: "absolute", bottom: "calc(100% + 6px)", left: "50%",
-                              transform: "translateX(-50%)",
-                              zIndex: 200,
-                              background: "#0D1B35",
-                              border: "1px solid rgba(255,255,255,.12)",
-                              borderRadius: 12, padding: 8,
-                              minWidth: 200,
-                              boxShadow: "0 -8px 32px rgba(0,0,0,.6)",
-                            }}
-                          >
-                            {/* Título */}
-                            <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", fontWeight: 700, padding: "4px 10px 8px", letterSpacing: 1 }}>
-                              PUBLICAR AGORA
-                            </div>
-                            {([
-                              { modo: "feed"    as const, label: "📷 Feed",         desc: "4:5 · 1080×1350px" },
-                              { modo: "stories" as const, label: "📱 Stories",      desc: "9:16 · 1080×1920px" },
-                              { modo: "ambos"   as const, label: "📲 Feed + Stories", desc: "os dois juntos" },
-                            ]).map(({ modo, label, desc }) => (
-                              <button
-                                key={modo}
-                                onClick={() => { setDropdownAberto(null); publicarInstagram(c, modo); }}
-                                style={{
-                                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                                  width: "100%", textAlign: "left",
-                                  background: "none", border: "none",
-                                  color: "#fff", padding: "8px 10px",
-                                  borderRadius: 7, cursor: "pointer",
-                                  fontSize: 12, fontWeight: 700,
-                                  transition: "background .1s",
-                                }}
-                                onMouseEnter={e => (e.currentTarget.style.background = "rgba(225,48,108,.12)")}
-                                onMouseLeave={e => (e.currentTarget.style.background = "none")}
-                              >
-                                <span>{label}</span>
-                                <span style={{ fontSize: 10, color: "rgba(255,255,255,.3)", fontWeight: 400 }}>{desc}</span>
-                              </button>
-                            ))}
-
-                            {/* Divisor */}
-                            <div style={{ height: 1, background: "rgba(255,255,255,.07)", margin: "6px 0" }} />
-
-                            {/* Título agendar */}
-                            <div style={{ fontSize: 10, color: "rgba(255,184,0,.6)", fontWeight: 700, padding: "4px 10px 6px", letterSpacing: 1 }}>
-                              ⏰ AGENDAR
-                            </div>
-                            {([
-                              { modo: "feed"    as const, label: "📷 Feed" },
-                              { modo: "stories" as const, label: "📱 Stories" },
-                              { modo: "ambos"   as const, label: "📲 Feed + Stories" },
-                            ]).map(({ modo, label }) => (
-                              <button
-                                key={"ag-" + modo}
-                                onClick={() => { setDropdownAberto(null); setAgendarModal({ concurso: c, modo }); }}
-                                style={{
-                                  display: "block", width: "100%", textAlign: "left",
-                                  background: "none", border: "none",
-                                  color: "#FFB800", padding: "7px 10px",
-                                  borderRadius: 7, cursor: "pointer",
-                                  fontSize: 11, fontWeight: 600,
-                                }}
-                                onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,184,0,.08)")}
-                                onMouseLeave={e => (e.currentTarget.style.background = "none")}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <CardPublicarBtn
+                        concurso={c}
+                        downloadingId={downloadingId}
+                        onPublicar={modo => publicarInstagram(c, modo)}
+                        onAgendar={modo => setAgendarModal({ concurso: c, modo })}
+                      />
                     </div>
 
                     {/* ── LINHA 2: Utilitários ── */}
