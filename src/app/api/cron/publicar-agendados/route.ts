@@ -9,7 +9,7 @@ import { getSupabase } from "@/lib/supabase";
 export const runtime     = "nodejs";
 export const maxDuration = 60;
 
-const IG_TOKEN = process.env.IG_ACCESS_TOKEN || "EAARBkW84Ti8BRPU6kBZAbDb5odzlUdZBktZBU3lUxyK2bzqImydyWaEPLyZB0gVZA9S3qvO83A9PMnrrrgcfs2jZCs0rpXOK0crU3u81epspkjMXGf0uEhXGROyha0QdS3887ZAZAwS1Br8itDVzyEc7MciCbEkkkiZBQh08UIuT5f6y1f2tzSdXrb8g8FfkanasZBJ9qXxp69aaJZCbjSkgEvjR76nzOfX4iJOA8YojtXZAx7ZApNis4SpnWmjLS29CHDoZBr1UZAZB42SWZBKyQdn7rirBhnNyo";
+const IG_TOKEN = process.env.IG_ACCESS_TOKEN || "EAARBkW84Ti8BROaK7f4ZBYjc53DgbsNN81YEOzySCzVDaht5pppv8agunxGCZBiStZBeA3ZAHW9FB60uZBjrz4XFT2K0deFiQ5kZAdRvUZBTfCUT5mGAsTM7JHqoDsUoNItdGAstubrwNegLEAC0UtaNdDzt8y0cLdOIYmsx9Yj1ZBYwhZAyFwZBlUzeMZAqiZBksO35ASImCJtXZCFrcUVCk";
 const IG_ID    = process.env.IG_ACCOUNT_ID   || "17841459409972261";
 const IG_VER   = "v19.0";
 
