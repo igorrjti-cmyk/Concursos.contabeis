@@ -46,6 +46,16 @@ export default function CalendarioPage() {
   const [mesAtual, setMesAtual]         = useState(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(isoData(hoje));
   const [deletando, setDeletando]       = useState<number | null>(null);
+  const [publicando, setPublicando]     = useState<number | null>(null);
+  const [toastMsg, setToastMsg]         = useState<string | null>(null);
+  const [cronStatus, setCronStatus]     = useState<Record<string,unknown> | null>(null);
+  const [cronLoading, setCronLoading]   = useState(false);
+  const [mostrarCron, setMostrarCron]   = useState(false);
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 5000);
+  };
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -71,6 +81,86 @@ export default function CalendarioPage() {
     setDeletando(null);
   }
 
+  async function testarCron(simular = true) {
+    setCronLoading(true);
+    setCronStatus(null);
+    try {
+      const params = simular ? "?test=1" : "";
+      const res = await fetch(`/api/cron/publicar-agendados${params}`, {
+        headers: { "Authorization": `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET || "concursos2026a3f8c2d1e4b5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1xkQ9mPz3"}` },
+      });
+      const data = await res.json();
+      setCronStatus(data);
+      setMostrarCron(true);
+      if (!simular && data.processados > 0) {
+        showToast(`✅ Cron executado: ${data.processados} publicação(ões) processada(s)`);
+        await carregar();
+      } else if (!simular) {
+        showToast("ℹ️ Cron executado: nenhum agendamento pendente no momento");
+      }
+    } catch (e) {
+      setCronStatus({ ok: false, erro: String(e) });
+      setMostrarCron(true);
+    } finally {
+      setCronLoading(false);
+    }
+  }
+
+  async function publicarAgora(ag: Agendamento) {
+    setPublicando(ag.id);
+    try {
+      // Chama a extensão para publicar imediatamente
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const chrome = (window as any).chrome;
+      if (!chrome?.runtime?.sendMessage) {
+        showToast("❌ Extensão não encontrada. Instale a extensão no Chrome.");
+        return;
+      }
+      const EXT_ID = "phmnhackebfpjcjpdopobdalmaolbglk";
+
+      // Busca as imagens do agendamento do banco
+      const res = await fetch(`/api/agendamentos/${ag.id}/imagens`);
+      const data = await res.json();
+
+      if (!data.ok || (!data.feed_base64 && !data.stories_base64)) {
+        showToast("❌ Imagens não encontradas. Reagende esta publicação no painel.");
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          EXT_ID,
+          {
+            type: "PUBLICAR_INSTAGRAM",
+            feedBase64:    data.feed_base64    || null,
+            storiesBase64: data.stories_base64 || null,
+            legenda:       data.legenda        || null,
+            agendadoPara:  null,
+          },
+          (r: { ok: boolean } | undefined) => {
+            if (chrome.runtime.lastError || !r?.ok) {
+              reject(new Error(chrome.runtime.lastError?.message || "Extensão não respondeu"));
+            } else resolve();
+          }
+        );
+      });
+
+      // Marca como publicado
+      await fetch("/api/agendamentos", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: ag.id }),
+      });
+
+      showToast("✅ Publicado com sucesso!");
+      await carregar();
+    } catch (e) {
+      showToast("❌ " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setPublicando(null);
+    }
+  }
+
   // Monta o grid do mês
   const diasNoMes = new Date(mesAtual.getFullYear(), mesAtual.getMonth() + 1, 0).getDate();
   const primeiroDia = new Date(mesAtual.getFullYear(), mesAtual.getMonth(), 1).getDay();
@@ -91,6 +181,16 @@ export default function CalendarioPage() {
   const eventosDia = diaSelecionado ? (eventosMap[diaSelecionado] ?? { agendados: [], postados: [] }) : null;
 
   return (
+    <>
+    {toastMsg && (
+      <div style={{
+        position: "fixed", bottom: 24, right: 24, zIndex: 9999,
+        background: toastMsg.startsWith("✅") ? "rgba(0,200,150,.95)" : "rgba(255,75,75,.95)",
+        color: "#fff", padding: "12px 20px", borderRadius: 10,
+        fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13,
+        boxShadow: "0 8px 24px rgba(0,0,0,.4)",
+      }}>{toastMsg}</div>
+    )}
     <div style={{ minHeight: "100vh", background: "#060E20", fontFamily: "'Sora',sans-serif", color: "#fff" }}>
       <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
       <style>{`
@@ -113,10 +213,74 @@ export default function CalendarioPage() {
             Agendamentos futuros e histórico de posts publicados
           </p>
         </div>
-        <a href="/" style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.5)", fontSize: 12, textDecoration: "none", fontWeight: 700 }}>
-          ← Painel
-        </a>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={() => testarCron(true)}
+            disabled={cronLoading}
+            title="Verifica agendamentos sem publicar"
+            style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid rgba(255,184,0,.3)", background: "rgba(255,184,0,.08)", color: "#FFB800", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+          >{cronLoading ? "⏳" : "🔍 Diagnosticar"}</button>
+          <button
+            onClick={() => testarCron(false)}
+            disabled={cronLoading}
+            title="Executa o cron agora e publica agendamentos vencidos"
+            style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid rgba(0,200,150,.3)", background: "rgba(0,200,150,.08)", color: "#00C896", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+          >{cronLoading ? "⏳ Executando..." : "▶ Executar cron agora"}</button>
+          <a href="/" style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,.1)", color: "rgba(255,255,255,.5)", fontSize: 12, textDecoration: "none", fontWeight: 700 }}>
+            ← Painel
+          </a>
+        </div>
       </div>
+
+      {/* Painel de status do cron */}
+      {mostrarCron && cronStatus && (
+        <div style={{ margin: "0 24px 0", padding: "14px 20px", background: "rgba(0,0,0,.3)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: (cronStatus.ok as boolean) ? "#00C896" : "#FF4B4B" }}>
+              {(cronStatus.ok as boolean) ? "✅" : "❌"} Cron — {(cronStatus.modo as string) === "simulacao" ? "Diagnóstico (sem publicar)" : "Execução real"}
+            </span>
+            <button onClick={() => setMostrarCron(false)} style={{ background: "none", border: "none", color: "rgba(255,255,255,.3)", cursor: "pointer", fontSize: 16 }}>×</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+            {[
+              { label: "Horário UTC", value: (cronStatus.timestamp_utc as string)?.slice(11,16) + " UTC" },
+              { label: "Horário Brasília", value: (cronStatus.timestamp_brt as string)?.slice(11,16) + " BRT" },
+              { label: "Agendamentos processados", value: String(cronStatus.processados ?? 0) },
+            ].map(s => (
+              <div key={s.label} style={{ background: "rgba(255,255,255,.03)", borderRadius: 8, padding: "10px 14px" }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", marginBottom: 4 }}>{s.label}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+          {/* Resultados por agendamento */}
+          {(cronStatus.resultados as unknown[])?.length > 0 && (
+            <div>
+              <p style={{ fontSize: 10, color: "rgba(255,255,255,.3)", marginBottom: 8, fontWeight: 700 }}>DETALHES</p>
+              {(cronStatus.resultados as Record<string,unknown>[]).map((r, i) => (
+                <div key={i} style={{ fontSize: 11, padding: "6px 10px", background: "rgba(255,255,255,.02)", borderRadius: 6, marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "rgba(255,255,255,.6)" }}>{r.cargo as string} · {r.modo as string}</span>
+                  <span style={{ color: (r.status as string)?.includes("✅") ? "#00C896" : "#FF4B4B", fontWeight: 700 }}>{r.status as string}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {(cronStatus.processados as number) === 0 && (
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,.3)", textAlign: "center", padding: "8px 0" }}>
+              {(cronStatus.modo as string) === "simulacao"
+                ? "Nenhum agendamento com horário vencido encontrado"
+                : "Nenhum agendamento pendente no momento"}
+            </div>
+          )}
+          <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(255,184,0,.06)", border: "1px solid rgba(255,184,0,.15)", borderRadius: 8 }}>
+            <p style={{ fontSize: 10, color: "#FFB800", fontWeight: 700 }}>⏰ FUSO HORÁRIO</p>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,.4)", marginTop: 4 }}>
+              O Vercel usa UTC. Brasília = UTC-3. Se você agendar para 10:00 BRT, o cron dispara às 13:00 UTC.
+              A próxima execução automática é às {(cronStatus.proxima_execucao_utc as string)?.slice(11,16)} UTC.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 0, maxHeight: "calc(100vh - 89px)" }}>
 
@@ -284,15 +448,28 @@ export default function CalendarioPage() {
                       </div>
                     </div>
                     {!a.publicado && (
-                      <button
-                        onClick={() => deletarAgendamento(a.id)}
-                        disabled={deletando === a.id}
-                        style={{
-                          background: "rgba(255,75,75,.1)", border: "1px solid rgba(255,75,75,.2)",
-                          color: "#FF4B4B", borderRadius: 6, width: 28, height: 28,
-                          cursor: "pointer", fontSize: 14, flexShrink: 0, marginLeft: 8,
-                        }}
-                      >✕</button>
+                      <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
+                        <button
+                          onClick={() => publicarAgora(a)}
+                          disabled={publicando === a.id || deletando === a.id}
+                          title="Publicar agora"
+                          style={{
+                            background: "rgba(0,200,150,.1)", border: "1px solid rgba(0,200,150,.2)",
+                            color: "#00C896", borderRadius: 6, width: 28, height: 28,
+                            cursor: "pointer", fontSize: 13, flexShrink: 0,
+                          }}
+                        >{publicando === a.id ? "…" : "▶"}</button>
+                        <button
+                          onClick={() => deletarAgendamento(a.id)}
+                          disabled={deletando === a.id || publicando === a.id}
+                          title="Cancelar agendamento"
+                          style={{
+                            background: "rgba(255,75,75,.1)", border: "1px solid rgba(255,75,75,.2)",
+                            color: "#FF4B4B", borderRadius: 6, width: 28, height: 28,
+                            cursor: "pointer", fontSize: 14, flexShrink: 0,
+                          }}
+                        >{deletando === a.id ? "…" : "✕"}</button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -325,5 +502,6 @@ export default function CalendarioPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

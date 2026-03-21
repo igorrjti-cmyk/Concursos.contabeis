@@ -61,7 +61,10 @@ async function publicarViaAPI(imageUrl: string, tipo: "IMAGE" | "STORIES", legen
 export async function GET(req: Request) {
   // Segurança: só Vercel Cron pode chamar
   const auth = req.headers.get("authorization");
-  if (process.env.NODE_ENV === "production" && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  const url  = new URL(req.url);
+  const isTest = url.searchParams.get("test") === "1";
+  // Aceita: Vercel Cron (Bearer CRON_SECRET) ou chamada manual do painel (mesmo secret)
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 
@@ -69,12 +72,11 @@ export async function GET(req: Request) {
   if (!sb) return NextResponse.json({ ok: false, error: "Supabase nao configurado" });
 
   // Busca agendamentos pendentes vencidos (com imagens salvas)
-  const { data: pendentes, error } = await sb
-    .from("agendamentos_posts")
-    .select("*")
-    .eq("publicado", false)
-    .lte("agendado_para", new Date().toISOString())
-    .limit(10);
+  // Em modo test, também mostra agendamentos futuros (para diagnóstico)
+  const query = sb.from("agendamentos_posts").select("id, concurso_id, cargo, orgao, estado, modo, agendado_para, publicado, feed_base64, stories_base64, legenda").eq("publicado", false).limit(10);
+  const { data: pendentes, error } = isTest
+    ? await query.order("agendado_para", { ascending: true })
+    : await query.lte("agendado_para", new Date().toISOString());
 
   if (error) return NextResponse.json({ ok: false, error: error.message });
   if (!pendentes?.length) {
@@ -152,10 +154,17 @@ export async function GET(req: Request) {
     resultados.push(r);
   }
 
+  const agora = new Date();
+  const agoraBRT = new Date(agora.getTime() - 3 * 60 * 60 * 1000);
+
   return NextResponse.json({
-    ok:          true,
-    processados: resultados.length,
+    ok:            true,
+    modo:          isTest ? "simulacao" : "producao",
+    processados:   resultados.length,
     resultados,
-    timestamp:   new Date().toISOString(),
+    timestamp_utc: agora.toISOString(),
+    timestamp_brt: agoraBRT.toISOString().replace("T", " ").slice(0, 16) + " (Brasília)",
+    proxima_execucao_utc: new Date(Math.ceil(agora.getTime() / 300000) * 300000).toISOString(),
+    aviso: isTest ? "SIMULACAO: nenhuma publicacao foi feita" : undefined,
   });
 }
