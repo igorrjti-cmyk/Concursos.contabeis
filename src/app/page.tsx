@@ -1525,6 +1525,7 @@ function HomeContent() {
         )}
       </main>
     </div>
+    </>
   );
 }
 
@@ -1539,7 +1540,5 @@ export default function Home() {
     }>
       <HomeContent />
     </Suspense>
-    </div>
-    </>
   );
 }
