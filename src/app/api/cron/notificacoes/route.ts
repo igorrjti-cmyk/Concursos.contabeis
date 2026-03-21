@@ -101,7 +101,7 @@ export async function GET(req: Request) {
       }
     }
 
-  } catch (e) {
+  } catch (e: unknown) {
     resultados.erros.push(String(e));
   }
 

@@ -67,7 +67,7 @@ async function baixarPDF(url: string): Promise<ArrayBuffer | null> {
     const buf = await res.arrayBuffer();
     console.log(`[PDF] Baixado ${Math.round(buf.byteLength / 1024)}KB`);
     return buf;
-  } catch (e) {
+  } catch (e: unknown) {
     console.warn(`[PDF] Erro ao baixar:`, e);
     return null;
   } finally {
@@ -199,7 +199,7 @@ async function extrairTextoPDF(buffer: ArrayBuffer): Promise<string> {
     const { text } = await extractText(new Uint8Array(buffer), { mergePages: true });
     console.log(`[PDF] unpdf extraiu ${text?.length ?? 0} chars`);
     return text ?? "";
-  } catch (e) {
+  } catch (e: unknown) {
     console.warn("[PDF] unpdf falhou:", e);
     return "";
   }

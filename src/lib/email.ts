@@ -39,7 +39,7 @@ async function enviarEmail(to: string, subject: string, html: string): Promise<b
     }
     console.log(`[EMAIL] Enviado com sucesso: id=${data.id} | to=${to}`);
     return true;
-  } catch (e) {
+  } catch (e: unknown) {
     console.error("[EMAIL] Erro de rede ao enviar e-mail:", e);
     return false;
   }

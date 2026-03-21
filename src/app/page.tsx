@@ -279,7 +279,7 @@ function HomeContent() {
         });
         console.groupEnd();
       }
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Erro no debug:", e);
     } finally {
       console.groupEnd();
@@ -340,7 +340,7 @@ function HomeContent() {
           }
         }
         if (data0.fim) return;
-      } catch (e) {
+      } catch (e: unknown) {
         console.warn("[Lote 1] Falhou, continuando...", e);
       }
 
@@ -369,14 +369,14 @@ function HomeContent() {
           }
 
           if (data.fim) break;
-        } catch (e) {
+        } catch (e: unknown) {
           console.warn(`[Lote ${lote + 1}] Falhou, continuando...`, e);
           setLoteProgresso({ atual: lote + 1, total: TOTAL_LOTES });
           continue;
         }
       }
 
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Erro ao carregar concursos:", e);
       setErro("Falha na conexão com o servidor. Verifique sua internet e tente novamente.");
     } finally {
@@ -606,7 +606,7 @@ function HomeContent() {
       showToast(`✅ ${partes} publicado com sucesso!`, "ok");
       await marcarPostado(c);
 
-    } catch (e) {
+    } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Erro desconhecido";
       showToast("❌ " + msg, "erro");
     } finally {

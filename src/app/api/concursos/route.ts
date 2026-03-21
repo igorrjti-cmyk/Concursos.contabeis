@@ -194,7 +194,7 @@ export async function GET(req: Request) {
       fromCache: false,
       concursos,
     });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("Erro no scraping:", err);
     return NextResponse.json(
       { ok: false, error: "Falha ao buscar concursos" },
@@ -223,7 +223,7 @@ export async function DELETE() {
     }
 
     return NextResponse.json({ ok: true, message: "Cache limpo com sucesso" });
-  } catch (err) {
+  } catch (err: unknown) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }

@@ -50,7 +50,7 @@ export async function GET(req: Request) {
         erros.push(`lote ${lote}: ${data.error ?? "falhou"}`);
       }
       if (data.fim) break;
-    } catch (e) {
+    } catch (e: unknown) {
       erros.push(`lote ${lote}: ${String(e)}`);
     }
   }

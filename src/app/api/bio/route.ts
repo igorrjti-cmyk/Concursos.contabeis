@@ -89,7 +89,7 @@ export async function GET() {
 
     return NextResponse.json({ ok: true, items, total: items.length, atualizado: new Date().toISOString() });
 
-  } catch (e) {
+  } catch (e: unknown) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

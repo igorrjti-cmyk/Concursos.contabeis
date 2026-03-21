@@ -276,7 +276,7 @@ export async function GET(req: Request) {
         cargosContabeis: det.cargosContabeis,
       } as Concurso);
     }
-  } catch (err) {
+  } catch (err: unknown) {
     console.error(`[LOTE ${loteIdx}] Erro em ${urlPath}:`, err);
     // Não falha — apenas continua sem os itens deste lote
   }

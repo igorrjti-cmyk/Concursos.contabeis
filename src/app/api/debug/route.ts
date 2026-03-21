@@ -22,7 +22,7 @@ async function fetchComTimeout(url: string) {
     });
     if (!res.ok) return { ok: false, status: res.status, html: null };
     return { ok: true, status: res.status, html: await res.text() };
-  } catch (e) {
+  } catch (e: unknown) {
     return { ok: false, status: 0, html: null, error: String(e) };
   } finally {
     clearTimeout(timer);

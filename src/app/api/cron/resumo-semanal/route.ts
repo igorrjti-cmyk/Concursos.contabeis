@@ -77,7 +77,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ ok: true, novos: novos.length, encerrando: encerrandoEssaSemana.length });
 
-  } catch (e) {
+  } catch (e: unknown) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
