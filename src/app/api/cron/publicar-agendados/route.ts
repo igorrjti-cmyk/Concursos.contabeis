@@ -37,7 +37,7 @@ async function uploadBase64(base64: string, label = ""): Promise<{ url: string |
       : data.error?.message ?? `HTTP ${httpStatus}`;
 
     return { url: null, erro: `Imgur [${label}] ${tamanhoKB}KB: ${errMsg}` };
-  } catch (e) {
+  } catch (e: unknown) {
     return { url: null, erro: `Upload exception [${label}]: ${String(e)}` };
   }
 }
@@ -78,7 +78,7 @@ async function publicarViaAPI(imageUrl: string, tipo: "IMAGE" | "STORIES", legen
     if (pData.id) return { id: pData.id };
     return { id: null, erro: `publish: ${pData.error?.message ?? "sem id"} | status: ${statusFinal}` };
 
-  } catch (e) {
+  } catch (e: unknown) {
     return { id: null, erro: `exception: ${String(e)}` };
   }
 }
@@ -136,7 +136,7 @@ export async function GET(req: Request) {
 
       // ── Publica Feed ──────────────────────────────────────────────────────
       if ((ag.modo === "feed" || ag.modo === "ambos") && ag.feed_base64) {
-        const { url: imageUrl, erro: erroUpload } = await uploadBase64(ag.feed_base64, "feed");
+        const { url: imageUrl, erro: erroUpload } = await uploadBase64(ag.feed_base64 as string, "feed");
         if (imageUrl) {
           const { id: pubId, erro: erroPub } = await publicarViaAPI(imageUrl, "IMAGE", ag.legenda);
           postIdFeed = pubId;
@@ -150,7 +150,7 @@ export async function GET(req: Request) {
 
       // ── Publica Stories ───────────────────────────────────────────────────
       if ((ag.modo === "stories" || ag.modo === "ambos") && ag.stories_base64) {
-        const { url: imageUrl, erro: erroUpload } = await uploadBase64(ag.stories_base64, "stories");
+        const { url: imageUrl, erro: erroUpload } = await uploadBase64(ag.stories_base64 as string, "stories");
         if (imageUrl) {
           const { id: pubId, erro: erroPub } = await publicarViaAPI(imageUrl, "STORIES");
           postIdStories = pubId;
@@ -203,7 +203,7 @@ export async function GET(req: Request) {
         }
       }
 
-    } catch (e) {
+    } catch (e: unknown) {
       r.status = "erro";
       r.erro   = String(e);
     }

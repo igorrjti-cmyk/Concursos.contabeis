@@ -100,7 +100,7 @@ export default function CalendarioPage() {
       } else if (!simular) {
         showToast("ℹ️ Cron executado: nenhum agendamento pendente no momento");
       }
-    } catch (e) {
+    } catch (e: unknown) {
       setCronStatus({ ok: false, erro: String(e) });
       setMostrarCron(true);
     } finally {
@@ -156,7 +156,7 @@ export default function CalendarioPage() {
 
       showToast("✅ Publicado com sucesso!");
       await carregar();
-    } catch (e) {
+    } catch (e: unknown) {
       showToast("❌ " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setPublicando(null);
