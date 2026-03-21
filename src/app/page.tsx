@@ -542,6 +542,39 @@ function HomeContent() {
   const publicarInstagram = async (c: Concurso, modo: "feed" | "stories" | "ambos" = "ambos", agendarEm?: string) => {
     setDownloadingId(c.id + "ig" + modo);
     try {
+      // ── AGENDAMENTO: gera os cards aqui no navegador e salva base64 no banco ──
+      // O cron usa as imagens salvas — sem precisar de screenshot externo
+      if (agendarEm) {
+        await document.fonts.ready;
+        const { renderCardCanvas } = await import("@/lib/card-renderer");
+
+        const feedBase64    = (modo === "feed"    || modo === "ambos") ? (await renderCardCanvas(c, "feed")).toDataURL("image/png")    : null;
+        const storiesBase64 = (modo === "stories" || modo === "ambos") ? (await renderCardCanvas(c, "stories")).toDataURL("image/png") : null;
+        const legenda = gerarLegenda(c);
+
+        const res = await fetch("/api/agendamentos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            concurso_id:    c.id,
+            cargo:          c.cargo,
+            orgao:          c.orgao,
+            estado:         c.estado,
+            modo,
+            agendado_para:  new Date(agendarEm).toISOString(),
+            feed_base64:    feedBase64,
+            stories_base64: storiesBase64,
+            legenda,
+          }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Erro ao salvar agendamento");
+        const partes = modo === "feed" ? "Feed" : modo === "stories" ? "Stories" : "Feed + Stories";
+        showToast(`⏰ ${partes} agendado para ${new Date(agendarEm).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}!`, "ok");
+        return;
+      }
+
+      // ── PUBLICAÇÃO IMEDIATA: chama a extensão ────────────────────────────
       await document.fonts.ready;
       const { renderCardCanvas } = await import("@/lib/card-renderer");
 
@@ -557,24 +590,21 @@ function HomeContent() {
 
       const EXT_ID = "phmnhackebfpjcjpdopobdalmaolbglk";
 
-      const res = await new Promise<{ ok: boolean; resultados?: Record<string, boolean> }>((resolve, reject) => {
+      await new Promise<void>((resolve, reject) => {
         chrome.runtime.sendMessage(
           EXT_ID,
-          { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64, legenda, agendadoPara: agendarEm || null },
-          (r: { ok: boolean; resultados?: Record<string, boolean> } | undefined) => {
+          { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64, legenda, agendadoPara: null },
+          (r: { ok: boolean } | undefined) => {
             if (chrome.runtime.lastError || !r?.ok) {
               reject(new Error(chrome.runtime.lastError?.message || "Extensão não respondeu. Verifique se está instalada e ativa."));
-            } else {
-              resolve(r);
-            }
+            } else { resolve(); }
           }
         );
       });
 
       const partes = [feedBase64 && "Feed", storiesBase64 && "Stories"].filter(Boolean).join(" + ");
-      const agendadoMsg = agendarEm ? ` agendado para ${new Date(agendarEm).toLocaleString("pt-BR")}` : " publicado";
-      showToast(`✅ ${partes}${agendadoMsg} com sucesso!`, "ok");
-      if (!agendarEm) await marcarPostado(c);
+      showToast(`✅ ${partes} publicado com sucesso!`, "ok");
+      await marcarPostado(c);
 
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro desconhecido";
@@ -616,7 +646,7 @@ function HomeContent() {
       }}>
         <h3 style={{ color: "#00C896", margin: "0 0 8px", fontSize: 18 }}>⏰ Agendar publicação</h3>
         <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, margin: "0 0 20px" }}>
-          {[agendarModal.modo === "feed" && "Feed", agendarModal.modo === "stories" && "Stories", agendarModal.modo === "ambos" && "Feed + Stories"].filter(Boolean).join(" + ")} · {agendarModal.concurso.cargo}
+          {agendarModal.modo === "feed" ? "📷 Feed" : agendarModal.modo === "stories" ? "📱 Stories" : "📲 Feed + Stories"} · {agendarModal.concurso.cargo}
         </p>
         <label style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, display: "block", marginBottom: 8 }}>DATA E HORA</label>
         <input
@@ -784,7 +814,7 @@ function HomeContent() {
       </div>
 
       {/* ══════════════════════ TABS ══════════════════════ */}
-      <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,.05)", padding: "0 20px", overflowX: "auto" }}>
+      <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,.05)", padding: "0 20px", overflowX: "auto", gap: 4 }}>
         {(["lista", "cards", "favoritos", "stats", "calendario", "historico"] as TabType[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             background: "none", border: "none",
@@ -802,6 +832,23 @@ function HomeContent() {
               : `Histórico (${historico.length})`}
           </button>
         ))}
+        {/* Botão Calendário de Publicações */}
+        <a
+          href="/calendario"
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            marginLeft: "auto", flexShrink: 0,
+            display: "flex", alignItems: "center", gap: 5,
+            padding: "5px 12px",
+            background: "rgba(0,200,150,.08)",
+            border: "1px solid rgba(0,200,150,.2)",
+            borderRadius: 8,
+            color: "#00C896",
+            fontSize: 11, fontWeight: 700,
+            textDecoration: "none", whiteSpace: "nowrap",
+          }}
+        >📅 Publicações</a>
       </div>
 
       {/* ══════════════════════ FILTROS ══════════════════════ */}
@@ -1172,6 +1219,11 @@ function HomeContent() {
                     >
                       {downloadingId === c.id + "igfeed" ? "..." : "📷 Feed"}
                     </button>
+                    <button
+                      title="Agendar Feed"
+                      onClick={() => setAgendarModal({ concurso: c, modo: "feed" })}
+                      style={{ padding:"5px 8px", borderRadius:6, border:"1px solid rgba(255,184,0,.25)", background:"rgba(255,184,0,.07)", color:"#FFB800", cursor:"pointer", fontSize:12, fontWeight:700 }}
+                    >⏰</button>
                     {/* Stories */}
                     <button
                       onClick={() => publicarInstagram(c, "stories")}
@@ -1187,6 +1239,11 @@ function HomeContent() {
                     >
                       {downloadingId === c.id + "igstories" ? "..." : "📱 Stories"}
                     </button>
+                    <button
+                      title="Agendar Stories"
+                      onClick={() => setAgendarModal({ concurso: c, modo: "stories" })}
+                      style={{ padding:"5px 8px", borderRadius:6, border:"1px solid rgba(255,184,0,.25)", background:"rgba(255,184,0,.07)", color:"#FFB800", cursor:"pointer", fontSize:12, fontWeight:700 }}
+                    >⏰</button>
                     {/* Ambos */}
                     <button
                       onClick={() => publicarInstagram(c, "ambos")}
