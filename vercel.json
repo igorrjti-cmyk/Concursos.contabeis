@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/publicar-agendados",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }
