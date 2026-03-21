@@ -230,6 +230,7 @@ function HomeContent() {
   const [toast, setToast]               = useState<{ msg: string; tipo: "ok" | "erro" | "info" } | null>(null);
   const [agendarModal, setAgendarModal] = useState<{ concurso: Concurso; modo: "feed" | "stories" | "ambos" } | null>(null);
   const [agendadoPara, setAgendadoPara] = useState<string>("");
+  const [dropdownAberto, setDropdownAberto] = useState<string | null>(null);
 
   // Sincroniza filtros na URL sempre que mudam
   useEffect(() => {
@@ -532,6 +533,13 @@ function HomeContent() {
   };
 
   // Toast helper
+  // Fecha dropdown ao clicar fora
+  useEffect(() => {
+    const handler = () => setDropdownAberto(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
+
   const showToast = (msg: string, tipo: "ok" | "erro" | "info" = "ok") => {
     setToast({ msg, tipo });
     setTimeout(() => setToast(null), 5000);
@@ -1190,105 +1198,120 @@ function HomeContent() {
               {filtered.map(c => (
                 <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
                   <InstagramCard concurso={c} formato={cardFormato} />
-                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", justifyContent: "center" }}>
-                    <button
-                      onClick={() => downloadCard(c, cardFormato)}
-                      disabled={downloadingId === c.id + cardFormato}
-                      style={{
-                        background: downloadingId === c.id + cardFormato ? "rgba(0,200,150,.1)" : "linear-gradient(135deg,#00C896,#00A87A)",
-                        color: downloadingId === c.id + cardFormato ? "#00C896" : "#002D1F",
-                        border: "none", borderRadius: 9, padding: "8px 14px",
-                        cursor: "pointer", fontSize: 11, fontWeight: 700,
-                      }}
-                    >
-                      {downloadingId === c.id + cardFormato ? "Gerando..." : "Baixar PNG"}
-                    </button>
-                    <Btn color="#00C896" onClick={() => copyLegenda(c)}>{copied === c.id ? "✓ Copiado!" : "Legenda"}</Btn>
-                    {/* Feed */}
-                    <button
-                      onClick={() => publicarInstagram(c, "feed")}
-                      disabled={!!downloadingId}
-                      title="Publica só o Feed (4:5) via extensão"
-                      style={{
-                        background: downloadingId === c.id + "igfeed" ? "rgba(225,48,108,.1)" : "linear-gradient(135deg,#E1306C,#C13584)",
-                        color: downloadingId === c.id + "igfeed" ? "#E1306C" : "#fff",
-                        border: "none", borderRadius: 9, padding: "8px 12px",
-                        cursor: downloadingId ? "not-allowed" : "pointer",
-                        fontSize: 11, fontWeight: 700, opacity: downloadingId ? .6 : 1,
-                      }}
-                    >
-                      {downloadingId === c.id + "igfeed" ? "..." : "📷 Feed"}
-                    </button>
-                    <button
-                      title="Agendar Feed"
-                      onClick={() => setAgendarModal({ concurso: c, modo: "feed" })}
-                      style={{ padding:"5px 8px", borderRadius:6, border:"1px solid rgba(255,184,0,.25)", background:"rgba(255,184,0,.07)", color:"#FFB800", cursor:"pointer", fontSize:12, fontWeight:700 }}
-                    >⏰</button>
-                    {/* Stories */}
-                    <button
-                      onClick={() => publicarInstagram(c, "stories")}
-                      disabled={!!downloadingId}
-                      title="Publica só os Stories (9:16) via extensão em modo mobile"
-                      style={{
-                        background: downloadingId === c.id + "igstories" ? "rgba(225,48,108,.1)" : "linear-gradient(135deg,#833AB4,#C13584)",
-                        color: downloadingId === c.id + "igstories" ? "#C13584" : "#fff",
-                        border: "none", borderRadius: 9, padding: "8px 12px",
-                        cursor: downloadingId ? "not-allowed" : "pointer",
-                        fontSize: 11, fontWeight: 700, opacity: downloadingId ? .6 : 1,
-                      }}
-                    >
-                      {downloadingId === c.id + "igstories" ? "..." : "📱 Stories"}
-                    </button>
-                    <button
-                      title="Agendar Stories"
-                      onClick={() => setAgendarModal({ concurso: c, modo: "stories" })}
-                      style={{ padding:"5px 8px", borderRadius:6, border:"1px solid rgba(255,184,0,.25)", background:"rgba(255,184,0,.07)", color:"#FFB800", cursor:"pointer", fontSize:12, fontWeight:700 }}
-                    >⏰</button>
-                    {/* Ambos */}
-                    <button
-                      onClick={() => publicarInstagram(c, "ambos")}
-                      disabled={!!downloadingId}
-                      title="Publica Feed + Stories em sequência"
-                      style={{
-                        background: downloadingId === c.id + "igambos" ? "rgba(225,48,108,.1)" : "linear-gradient(135deg,#E1306C,#833AB4)",
-                        color: downloadingId === c.id + "igambos" ? "#E1306C" : "#fff",
-                        border: "none", borderRadius: 9, padding: "8px 12px",
-                        cursor: downloadingId ? "not-allowed" : "pointer",
-                        fontSize: 11, fontWeight: 700, opacity: downloadingId ? .6 : 1,
-                      }}
-                    >
-                      {downloadingId === c.id + "igambos" ? "Publicando..." : "📲 Feed+Stories"}
-                    </button>
-                    <button
-                      title="Agendar publicação"
-                      onClick={() => setAgendarModal({ concurso: c, modo: "ambos" })}
-                      style={{
-                        padding: "6px 10px", borderRadius: 6,
-                        border: "1px solid rgba(255,184,0,0.3)",
-                        background: "rgba(255,184,0,0.08)", color: "#FFB800",
-                        cursor: "pointer", fontSize: 16, fontWeight: 700,
-                      }}
-                    >⏰</button>
-                    <Btn color="#FFB800" onClick={() => marcarPostado(c)} disabled={jaPostado(c.id)}>
-                      {jaPostado(c.id) ? "Postado" : "Marcar"}
-                    </Btn>
-                    {(() => {
-                      const isPdf = c.linkEdital.toLowerCase().endsWith(".pdf");
-                      return (
-                        <a href={c.linkEdital} target="_blank" rel="noreferrer"
-                          title={isPdf ? "Abrir PDF do edital" : "Abrir notícia"}
-                          style={{
-                            background: isPdf ? "rgba(0,200,150,.08)" : "rgba(167,139,250,.08)",
-                            border: isPdf ? "1px solid rgba(0,200,150,.2)" : "1px solid rgba(167,139,250,.15)",
-                            color: isPdf ? "#00C896" : "#A78BFA",
-                            borderRadius: 9, padding: "8px 12px",
-                            fontSize: 11, fontWeight: 600, textDecoration: "none",
-                          }}
-                        >
-                          {isPdf ? "📄 PDF" : "Notícia ↗"}
-                        </a>
-                      );
-                    })()}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 390 }}>
+
+                    {/* ── LINHA 1: Botões de publicar com dropdown ── */}
+                    <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                      {([ 
+                        { id: "feed",    label: "📷 Feed",         cor1: "#E1306C", cor2: "#C13584", modo: "feed"    as const },
+                        { id: "stories", label: "📱 Stories",      cor1: "#833AB4", cor2: "#C13584", modo: "stories" as const },
+                        { id: "ambos",   label: "📲 Feed+Stories", cor1: "#E1306C", cor2: "#833AB4", modo: "ambos"   as const },
+                      ] as { id: string; label: string; cor1: string; cor2: string; modo: "feed" | "stories" | "ambos" }[]).map(({ id, label, cor1, cor2, modo }) => {
+                        const loading = downloadingId === c.id + "ig" + id;
+                        const ddKey   = c.id + id;
+                        const aberto  = dropdownAberto === ddKey;
+                        return (
+                          <div key={id} style={{ position: "relative" }}>
+                            {/* Botão principal + seta */}
+                            <div style={{ display: "flex", borderRadius: 9, overflow: "hidden", opacity: downloadingId && !loading ? .5 : 1 }}>
+                              {/* Parte esquerda — publicar agora */}
+                              <button
+                                onClick={() => { setDropdownAberto(null); publicarInstagram(c, modo); }}
+                                disabled={!!downloadingId}
+                                style={{
+                                  background: loading ? `${cor1}22` : `linear-gradient(135deg,${cor1},${cor2})`,
+                                  color: loading ? cor1 : "#fff",
+                                  border: "none", padding: "8px 10px",
+                                  cursor: downloadingId ? "not-allowed" : "pointer",
+                                  fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
+                                }}
+                              >
+                                {loading ? "..." : label}
+                              </button>
+                              {/* Seta — abre dropdown */}
+                              <button
+                                onClick={e => { e.stopPropagation(); setDropdownAberto(aberto ? null : ddKey); }}
+                                style={{
+                                  background: loading ? `${cor1}22` : `linear-gradient(135deg,${cor2},${cor1})`,
+                                  color: loading ? cor1 : "#fff",
+                                  border: "none", borderLeft: "1px solid rgba(255,255,255,.15)",
+                                  padding: "8px 6px", cursor: "pointer", fontSize: 10,
+                                }}
+                              >
+                                {aberto ? "▲" : "▼"}
+                              </button>
+                            </div>
+                            {/* Dropdown */}
+                            {aberto && (
+                              <div style={{
+                                position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 100,
+                                background: "#0D1B35", border: "1px solid rgba(255,255,255,.1)",
+                                borderRadius: 10, padding: 6, minWidth: 160,
+                                boxShadow: "0 8px 24px rgba(0,0,0,.5)",
+                              }}>
+                                <button
+                                  onClick={() => { setDropdownAberto(null); publicarInstagram(c, modo); }}
+                                  style={{ display:"block", width:"100%", textAlign:"left", background:"none", border:"none", color:"#fff", padding:"8px 12px", borderRadius:6, cursor:"pointer", fontSize:12, fontWeight:700 }}
+                                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,.06)")}
+                                  onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                                >▶ Publicar agora</button>
+                                <button
+                                  onClick={() => { setDropdownAberto(null); setAgendarModal({ concurso: c, modo }); }}
+                                  style={{ display:"block", width:"100%", textAlign:"left", background:"none", border:"none", color:"#FFB800", padding:"8px 12px", borderRadius:6, cursor:"pointer", fontSize:12, fontWeight:700 }}
+                                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,184,0,.08)")}
+                                  onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                                >⏰ Agendar...</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* ── LINHA 2: Utilitários ── */}
+                    <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                      <button
+                        onClick={() => downloadCard(c, cardFormato)}
+                        disabled={downloadingId === c.id + cardFormato}
+                        style={{
+                          background: "rgba(0,200,150,.08)", border: "1px solid rgba(0,200,150,.2)",
+                          color: "#00C896", borderRadius: 7, padding: "6px 10px",
+                          cursor: "pointer", fontSize: 10, fontWeight: 700,
+                        }}
+                      >
+                        {downloadingId === c.id + cardFormato ? "..." : "⬇ PNG"}
+                      </button>
+                      <button
+                        onClick={() => copyLegenda(c)}
+                        style={{
+                          background: "rgba(0,200,150,.08)", border: "1px solid rgba(0,200,150,.2)",
+                          color: "#00C896", borderRadius: 7, padding: "6px 10px",
+                          cursor: "pointer", fontSize: 10, fontWeight: 700,
+                        }}
+                      >
+                        {copied === c.id ? "✓ Copiado!" : "Legenda"}
+                      </button>
+                      <Btn color="#FFB800" onClick={() => marcarPostado(c)} disabled={jaPostado(c.id)}>
+                        {jaPostado(c.id) ? "✓ Postado" : "Marcar"}
+                      </Btn>
+                      {(() => {
+                        const isPdf = c.linkEdital.toLowerCase().endsWith(".pdf");
+                        return (
+                          <a href={c.linkEdital} target="_blank" rel="noreferrer"
+                            style={{
+                              background: isPdf ? "rgba(0,200,150,.08)" : "rgba(167,139,250,.08)",
+                              border: isPdf ? "1px solid rgba(0,200,150,.2)" : "1px solid rgba(167,139,250,.15)",
+                              color: isPdf ? "#00C896" : "#A78BFA",
+                              borderRadius: 7, padding: "6px 10px",
+                              fontSize: 10, fontWeight: 600, textDecoration: "none",
+                            }}
+                          >
+                            {isPdf ? "📄 PDF" : "↗ Notícia"}
+                          </a>
+                        );
+                      })()}
+                    </div>
+
                   </div>
                 </div>
               ))}
