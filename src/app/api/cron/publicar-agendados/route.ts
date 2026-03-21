@@ -14,48 +14,73 @@ const IG_ID    = process.env.IG_ACCOUNT_ID   || "17841459409972261";
 const IG_VER   = "v19.0";
 
 // Faz upload do base64 para o Imgur e retorna a URL pública
-async function uploadBase64(base64: string): Promise<string | null> {
+async function uploadBase64(base64: string, label = ""): Promise<{ url: string | null; erro?: string }> {
   try {
     const b64 = base64.includes(",") ? base64.split(",")[1] : base64;
-    const res  = await fetch("https://api.imgur.com/3/image", {
+    const tamanhoKB = Math.round(b64.length * 0.75 / 1024);
+
+    const res = await fetch("https://api.imgur.com/3/image", {
       method: "POST",
       headers: { "Authorization": "Client-ID 546c25a59c58ad7", "Content-Type": "application/json" },
       body: JSON.stringify({ image: b64, type: "base64" }),
     });
-    const data = await res.json() as { success: boolean; data?: { link: string } };
-    return data.success ? (data.data?.link ?? null) : null;
-  } catch { return null; }
+
+    const httpStatus = res.status;
+    const data = await res.json() as { success: boolean; data?: { link: string }; error?: { message?: string; code?: number } | string };
+
+    if (data.success && data.data?.link) {
+      return { url: data.data.link };
+    }
+
+    const errMsg = typeof data.error === "string"
+      ? data.error
+      : data.error?.message ?? `HTTP ${httpStatus}`;
+
+    return { url: null, erro: `Imgur [${label}] ${tamanhoKB}KB: ${errMsg}` };
+  } catch (e) {
+    return { url: null, erro: `Upload exception [${label}]: ${String(e)}` };
+  }
 }
 
-// Cria container, aguarda FINISHED e publica
-async function publicarViaAPI(imageUrl: string, tipo: "IMAGE" | "STORIES", legenda?: string): Promise<string | null> {
-  const bodyContainer: Record<string, unknown> = {
-    image_url: imageUrl, media_type: tipo, access_token: IG_TOKEN,
-  };
-  if (legenda && tipo === "IMAGE") bodyContainer.caption = legenda;
+// Cria container, aguarda FINISHED e publica — retorna id e erro detalhado
+async function publicarViaAPI(imageUrl: string, tipo: "IMAGE" | "STORIES", legenda?: string): Promise<{ id: string | null; erro?: string }> {
+  try {
+    const bodyContainer: Record<string, unknown> = {
+      image_url: imageUrl, media_type: tipo, access_token: IG_TOKEN,
+    };
+    if (legenda && tipo === "IMAGE") bodyContainer.caption = legenda;
 
-  const cRes  = await fetch(`https://graph.facebook.com/${IG_VER}/${IG_ID}/media`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(bodyContainer),
-  });
-  const cData = await cRes.json() as { id?: string; error?: { message: string } };
-  if (!cData.id) { console.error("Erro container:", cData.error?.message); return null; }
+    const cRes  = await fetch(`https://graph.facebook.com/${IG_VER}/${IG_ID}/media`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bodyContainer),
+    });
+    const cData = await cRes.json() as { id?: string; error?: { message: string; code?: number; error_subcode?: number } };
+    if (!cData.id) {
+      return { id: null, erro: `container: ${cData.error?.message ?? "sem id"} (code ${cData.error?.code})` };
+    }
 
-  // Aguarda processamento (máx 30s)
-  for (let i = 0; i < 10; i++) {
-    await new Promise(r => setTimeout(r, 3000));
-    const sRes  = await fetch(`https://graph.facebook.com/${IG_VER}/${cData.id}?fields=status_code,status&access_token=${IG_TOKEN}`);
-    const sData = await sRes.json() as { status_code?: string };
-    if (sData.status_code === "FINISHED") break;
-    if (sData.status_code === "ERROR")    return null;
+    // Aguarda processamento (máx 30s)
+    let statusFinal = "";
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const sRes  = await fetch(`https://graph.facebook.com/${IG_VER}/${cData.id}?fields=status_code,status&access_token=${IG_TOKEN}`);
+      const sData = await sRes.json() as { status_code?: string; status?: string };
+      statusFinal = sData.status ?? sData.status_code ?? "";
+      if (sData.status_code === "FINISHED") break;
+      if (sData.status_code === "ERROR")    return { id: null, erro: `container ERROR: ${sData.status}` };
+    }
+
+    const pRes  = await fetch(`https://graph.facebook.com/${IG_VER}/${IG_ID}/media_publish`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ creation_id: cData.id, access_token: IG_TOKEN }),
+    });
+    const pData = await pRes.json() as { id?: string; error?: { message: string } };
+    if (pData.id) return { id: pData.id };
+    return { id: null, erro: `publish: ${pData.error?.message ?? "sem id"} | status: ${statusFinal}` };
+
+  } catch (e) {
+    return { id: null, erro: `exception: ${String(e)}` };
   }
-
-  const pRes  = await fetch(`https://graph.facebook.com/${IG_VER}/${IG_ID}/media_publish`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ creation_id: cData.id, access_token: IG_TOKEN }),
-  });
-  const pData = await pRes.json() as { id?: string };
-  return pData.id ?? null;
 }
 
 export async function GET(req: Request) {
@@ -93,12 +118,13 @@ export async function GET(req: Request) {
 
       // ── Publica Feed ──────────────────────────────────────────────────────
       if ((ag.modo === "feed" || ag.modo === "ambos") && ag.feed_base64) {
-        const imageUrl = await uploadBase64(ag.feed_base64);
+        const { url: imageUrl, erro: erroUpload } = await uploadBase64(ag.feed_base64, "feed");
         if (imageUrl) {
-          postIdFeed = await publicarViaAPI(imageUrl, "IMAGE", ag.legenda);
-          r.feed = postIdFeed ? `✅ postId: ${postIdFeed}` : "❌ publicação falhou";
+          const { id: pubId, erro: erroPub } = await publicarViaAPI(imageUrl, "IMAGE", ag.legenda);
+          postIdFeed = pubId;
+          r.feed = pubId ? `✅ postId: ${pubId}` : `❌ Graph API: ${erroPub}`;
         } else {
-          r.feed = "❌ upload falhou";
+          r.feed = `❌ upload: ${erroUpload}`;
         }
       } else if (ag.modo === "feed" || ag.modo === "ambos") {
         r.feed = "⚠️ sem imagem salva (agendado antes da v5.1)";
@@ -106,12 +132,13 @@ export async function GET(req: Request) {
 
       // ── Publica Stories ───────────────────────────────────────────────────
       if ((ag.modo === "stories" || ag.modo === "ambos") && ag.stories_base64) {
-        const imageUrl = await uploadBase64(ag.stories_base64);
+        const { url: imageUrl, erro: erroUpload } = await uploadBase64(ag.stories_base64, "stories");
         if (imageUrl) {
-          postIdStories = await publicarViaAPI(imageUrl, "STORIES");
-          r.stories = postIdStories ? `✅ postId: ${postIdStories}` : "❌ publicação falhou";
+          const { id: pubId, erro: erroPub } = await publicarViaAPI(imageUrl, "STORIES");
+          postIdStories = pubId;
+          r.stories = pubId ? `✅ postId: ${pubId}` : `❌ Graph API: ${erroPub}`;
         } else {
-          r.stories = "❌ upload falhou";
+          r.stories = `❌ upload: ${erroUpload}`;
         }
       } else if (ag.modo === "stories" || ag.modo === "ambos") {
         r.stories = "⚠️ sem imagem salva (agendado antes da v5.1)";
