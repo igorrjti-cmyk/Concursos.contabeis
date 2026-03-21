@@ -114,7 +114,10 @@ export async function renderCardCanvas(
   ctx.fillRect(0, 0, 10, H);
 
   const PAD   = isStories ? 72 : 80;
-  const PAD_T = isStories ? 140 : 200;
+  // Se urgente, reduz o PAD_T para compensar o banner de 120px
+  const PAD_T = isStories
+    ? (urgente ? 60  : 180)
+    : (urgente ? 80  : 200);
   let Y = PAD_T;
   const FONT = "Sora, -apple-system, sans-serif";
 
@@ -279,22 +282,21 @@ export async function renderCardCanvas(
 
   // ── Stories: envolve o feed centralizado num canvas 9:16 ─────────────────
   if (isStories) {
-    // O canvas já é 1080×1920 — o conteúdo foi desenhado ocupando a altura total
-    // Adiciona CTA de "Arraste para cima" no rodapé do stories
-    const ctaY = H - 120;
-    roundRect(ctx, PAD, ctaY, W - PAD * 2, 80, 14);
-    ctx.fillStyle = "rgba(0,200,150,0.07)";
+    // CTA rodapé: "Link na bio" (sem swipe up para contas sem 10k seguidores)
+    const ctaY = H - 130;
+    roundRect(ctx, PAD, ctaY, W - PAD * 2, 90, 18);
+    ctx.fillStyle = "rgba(0,200,150,0.08)";
     ctx.fill();
-    ctx.strokeStyle = "rgba(0,200,150,0.2)";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(0,200,150,0.25)";
+    ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.font = `600 22px ${FONT}`;
-    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
     ctx.textAlign = "center";
-    ctx.fillText("ARRASTE PARA CIMA", W / 2, ctaY + 32);
-    ctx.font = `800 28px ${FONT}`;
+    ctx.fillText("ACESSE O LINK", W / 2, ctaY + 34);
+    ctx.font = `800 32px ${FONT}`;
     ctx.fillStyle = "#00C896";
-    ctx.fillText("Ver edital completo →", W / 2, ctaY + 66);
+    ctx.fillText("🔗  Link na bio →", W / 2, ctaY + 74);
     ctx.textAlign = "left";
   }
 

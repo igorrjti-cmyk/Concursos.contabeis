@@ -227,6 +227,9 @@ function HomeContent() {
   const [clearing, setClearing]         = useState(false);
   const [debugging, setDebugging]       = useState(false);
   const [erro, setErro]                 = useState<string | null>(null);
+  const [toast, setToast]               = useState<{ msg: string; tipo: "ok" | "erro" | "info" } | null>(null);
+  const [agendarModal, setAgendarModal] = useState<{ concurso: Concurso; modo: "feed" | "stories" | "ambos" } | null>(null);
+  const [agendadoPara, setAgendadoPara] = useState<string>("");
 
   // Sincroniza filtros na URL sempre que mudam
   useEffect(() => {
@@ -528,18 +531,22 @@ function HomeContent() {
     return historico.some(h => h.concurso_id === id && new Date(h.posted_at).toDateString() === hoje);
   };
 
+  // Toast helper
+  const showToast = (msg: string, tipo: "ok" | "erro" | "info" = "ok") => {
+    setToast({ msg, tipo });
+    setTimeout(() => setToast(null), 5000);
+  };
+
   // Envia só o feed para a extensão publicar no Instagram
   // Stories não funciona via web — disponível apenas para download manual
-  const publicarInstagram = async (c: Concurso, modo: "feed" | "stories" | "ambos" = "ambos") => {
+  const publicarInstagram = async (c: Concurso, modo: "feed" | "stories" | "ambos" = "ambos", agendarEm?: string) => {
     setDownloadingId(c.id + "ig" + modo);
     try {
       await document.fonts.ready;
       const { renderCardCanvas } = await import("@/lib/card-renderer");
 
-      // Gera apenas o que for necessário para o modo escolhido
       const feedBase64    = (modo === "feed"    || modo === "ambos") ? (await renderCardCanvas(c, "feed")).toDataURL("image/png")    : null;
       const storiesBase64 = (modo === "stories" || modo === "ambos") ? (await renderCardCanvas(c, "stories")).toDataURL("image/png") : null;
-
       const legenda = gerarLegenda(c);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -550,35 +557,99 @@ function HomeContent() {
 
       const EXT_ID = "phmnhackebfpjcjpdopobdalmaolbglk";
 
-      await new Promise<void>((resolve, reject) => {
+      const res = await new Promise<{ ok: boolean; resultados?: Record<string, boolean> }>((resolve, reject) => {
         chrome.runtime.sendMessage(
           EXT_ID,
-          { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64, legenda },
-          (res: { ok: boolean } | undefined) => {
-            if (chrome.runtime.lastError || !res?.ok) {
-              reject(new Error(chrome.runtime.lastError?.message || "Extensão não encontrada. Verifique se está instalada e ativa no Chrome."));
+          { type: "PUBLICAR_INSTAGRAM", feedBase64, storiesBase64, legenda, agendadoPara: agendarEm || null },
+          (r: { ok: boolean; resultados?: Record<string, boolean> } | undefined) => {
+            if (chrome.runtime.lastError || !r?.ok) {
+              reject(new Error(chrome.runtime.lastError?.message || "Extensão não respondeu. Verifique se está instalada e ativa."));
             } else {
-              resolve();
+              resolve(r);
             }
           }
         );
       });
 
-      const msgs: Record<string, string> = {
-        feed:    "✅ Feed (4:5) enviado para publicação!",
-        stories: "✅ Stories (9:16) enviado! O Instagram abrirá em modo mobile.",
-        ambos:   "✅ Publicação iniciada!\n\n1️⃣ Feed (4:5) será publicado agora.\n2️⃣ Stories (9:16) abrirá em modo mobile automaticamente em seguida.",
-      };
-      alert(msgs[modo]);
-      await marcarPostado(c);
+      const partes = [feedBase64 && "Feed", storiesBase64 && "Stories"].filter(Boolean).join(" + ");
+      const agendadoMsg = agendarEm ? ` agendado para ${new Date(agendarEm).toLocaleString("pt-BR")}` : " publicado";
+      showToast(`✅ ${partes}${agendadoMsg} com sucesso!`, "ok");
+      if (!agendarEm) await marcarPostado(c);
 
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro desconhecido";
-      alert("❌ " + msg);
+      showToast("❌ " + msg, "erro");
     } finally {
       setDownloadingId(null);
+      setAgendarModal(null);
+      setAgendadoPara("");
     }
   };
+
+  // ── Toast de notificação ──────────────────────────────────────────────────
+  const ToastUI = toast && (
+    <div style={{
+      position: "fixed", bottom: 32, right: 32, zIndex: 9999,
+      background: toast.tipo === "ok" ? "rgba(0,200,150,0.95)" : toast.tipo === "erro" ? "rgba(255,75,75,0.95)" : "rgba(99,102,241,0.95)",
+      color: "#fff", padding: "14px 24px", borderRadius: 12,
+      fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 14,
+      boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+      display: "flex", alignItems: "center", gap: 10,
+      animation: "slideIn .3s ease",
+      maxWidth: 400,
+    }}>
+      <style>{`@keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+      {toast.msg}
+      <button onClick={() => setToast(null)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1, marginLeft: 8 }}>×</button>
+    </div>
+  );
+
+  // ── Modal de Agendamento ───────────────────────────────────────────────────
+  const AgendarModalUI = agendarModal && (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,0.7)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <div style={{
+        background: "#0D1B35", border: "1px solid rgba(0,200,150,0.2)", borderRadius: 20,
+        padding: 32, width: 400, fontFamily: "'Sora',sans-serif",
+      }}>
+        <h3 style={{ color: "#00C896", margin: "0 0 8px", fontSize: 18 }}>⏰ Agendar publicação</h3>
+        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, margin: "0 0 20px" }}>
+          {[agendarModal.modo === "feed" && "Feed", agendarModal.modo === "stories" && "Stories", agendarModal.modo === "ambos" && "Feed + Stories"].filter(Boolean).join(" + ")} · {agendarModal.concurso.cargo}
+        </p>
+        <label style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, display: "block", marginBottom: 8 }}>DATA E HORA</label>
+        <input
+          type="datetime-local"
+          value={agendadoPara}
+          onChange={e => setAgendadoPara(e.target.value)}
+          min={new Date().toISOString().slice(0, 16)}
+          style={{
+            width: "100%", padding: "10px 14px", borderRadius: 8, fontSize: 14,
+            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+            color: "#fff", fontFamily: "'Sora',sans-serif", boxSizing: "border-box",
+          }}
+        />
+        <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+          <button
+            onClick={() => { setAgendarModal(null); setAgendadoPara(""); }}
+            style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontFamily: "'Sora',sans-serif" }}
+          >Cancelar</button>
+          <button
+            disabled={!agendadoPara}
+            onClick={() => publicarInstagram(agendarModal.concurso, agendarModal.modo, agendadoPara)}
+            style={{
+              flex: 2, padding: "10px 0", borderRadius: 8, border: "none",
+              background: agendadoPara ? "linear-gradient(135deg,#00C896,#00A87A)" : "rgba(255,255,255,0.1)",
+              color: agendadoPara ? "#002D1F" : "rgba(255,255,255,0.3)",
+              fontWeight: 700, cursor: agendadoPara ? "pointer" : "not-allowed",
+              fontFamily: "'Sora',sans-serif", fontSize: 14,
+            }}
+          >⏰ Agendar</button>
+        </div>
+      </div>
+    </div>
+  );
 
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "#060E20", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'Sora',sans-serif", gap: 16 }}>
@@ -589,6 +660,9 @@ function HomeContent() {
   );
 
   return (
+    <>
+    {ToastUI}
+    {AgendarModalUI}
     <div style={{ minHeight: "100vh", background: "#060E20", fontFamily: "'Sora',sans-serif", color: "#fff" }}>
       {confirmModal && <ConfirmModal mensagem={confirmModal.mensagem} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} />}
 
@@ -1128,6 +1202,16 @@ function HomeContent() {
                     >
                       {downloadingId === c.id + "igambos" ? "Publicando..." : "📲 Feed+Stories"}
                     </button>
+                    <button
+                      title="Agendar publicação"
+                      onClick={() => setAgendarModal({ concurso: c, modo: "ambos" })}
+                      style={{
+                        padding: "6px 10px", borderRadius: 6,
+                        border: "1px solid rgba(255,184,0,0.3)",
+                        background: "rgba(255,184,0,0.08)", color: "#FFB800",
+                        cursor: "pointer", fontSize: 16, fontWeight: 700,
+                      }}
+                    >⏰</button>
                     <Btn color="#FFB800" onClick={() => marcarPostado(c)} disabled={jaPostado(c.id)}>
                       {jaPostado(c.id) ? "Postado" : "Marcar"}
                     </Btn>
@@ -1455,5 +1539,7 @@ export default function Home() {
     }>
       <HomeContent />
     </Suspense>
+    </div>
+    </>
   );
 }
