@@ -98,7 +98,7 @@ export async function GET(req: Request) {
 
   // Busca agendamentos pendentes vencidos (com imagens salvas)
   // Em modo test, também mostra agendamentos futuros (para diagnóstico)
-  const query = sb.from("agendamentos_posts").select("id, concurso_id, cargo, orgao, estado, modo, agendado_para, publicado, feed_base64, stories_base64, legenda").eq("publicado", false).limit(10);
+  const query = sb.from("agendamentos_posts").select("id, concurso_id, cargo, orgao, estado, modo, agendado_para, publicado, feed_base64, stories_base64, legenda, tentativas").eq("publicado", false).limit(10);
   const { data: pendentes, error } = isTest
     ? await query.order("agendado_para", { ascending: true })
     : await query.lte("agendado_para", new Date().toISOString());
