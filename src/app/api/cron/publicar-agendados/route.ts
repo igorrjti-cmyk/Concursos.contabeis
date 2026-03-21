@@ -111,7 +111,25 @@ export async function GET(req: Request) {
   const resultados = [];
 
   for (const ag of pendentes) {
-    const r: Record<string, unknown> = { id: ag.id, cargo: ag.cargo, modo: ag.modo };
+    const r: Record<string, unknown> = {
+      id:           ag.id,
+      cargo:        ag.cargo,
+      modo:         ag.modo,
+      agendado_para: ag.agendado_para,
+      tem_feed:     !!ag.feed_base64,
+      tem_stories:  !!ag.stories_base64,
+    };
+
+    // MODO SIMULAÇÃO: apenas informa o que faria, sem publicar nem marcar
+    if (isTest) {
+      r.status = "🔍 simulação";
+      if (ag.modo === "feed" || ag.modo === "ambos")
+        r.feed = ag.feed_base64 ? "✓ imagem disponível" : "⚠️ sem imagem salva";
+      if (ag.modo === "stories" || ag.modo === "ambos")
+        r.stories = ag.stories_base64 ? "✓ imagem disponível" : "⚠️ sem imagem salva";
+      resultados.push(r);
+      continue;
+    }
 
     try {
       let postIdFeed = null, postIdStories = null;
@@ -127,7 +145,7 @@ export async function GET(req: Request) {
           r.feed = `❌ upload: ${erroUpload}`;
         }
       } else if (ag.modo === "feed" || ag.modo === "ambos") {
-        r.feed = "⚠️ sem imagem salva (agendado antes da v5.1)";
+        r.feed = "⚠️ sem imagem salva";
       }
 
       // ── Publica Stories ───────────────────────────────────────────────────
@@ -141,41 +159,53 @@ export async function GET(req: Request) {
           r.stories = `❌ upload: ${erroUpload}`;
         }
       } else if (ag.modo === "stories" || ag.modo === "ambos") {
-        r.stories = "⚠️ sem imagem salva (agendado antes da v5.1)";
+        r.stories = "⚠️ sem imagem salva";
       }
 
       const ok = postIdFeed !== null || postIdStories !== null;
+      const falhouTotal = !ok &&
+        ((ag.modo === "feed" || ag.modo === "ambos") ? postIdFeed === null : false) ||
+        ((ag.modo === "stories" || ag.modo === "ambos") ? postIdStories === null : false);
 
-      // Marca como publicado no banco
-      await sb.from("agendamentos_posts").update({
-        publicado:       true,
-        publicado_em:    new Date().toISOString(),
-        post_id_feed:    postIdFeed,
-        post_id_stories: postIdStories,
-        // Limpa os base64 após publicar (economiza espaço no banco)
-        feed_base64:     null,
-        stories_base64:  null,
-      }).eq("id", ag.id);
-
-      // Registra no histórico
       if (ok) {
+        // Sucesso: marca publicado e limpa base64
+        await sb.from("agendamentos_posts").update({
+          publicado:       true,
+          publicado_em:    new Date().toISOString(),
+          post_id_feed:    postIdFeed,
+          post_id_stories: postIdStories,
+          feed_base64:     null,
+          stories_base64:  null,
+        }).eq("id", ag.id);
+
         await sb.from("historico_posts").insert({
           concurso_id: ag.concurso_id,
           cargo:       ag.cargo,
           orgao:       ag.orgao,
           estado:      ag.estado,
         });
-      }
 
-      r.status = ok ? "✅ publicado" : "❌ falhou";
+        r.status = "✅ publicado";
+      } else {
+        // FIX 2: falhou — NÃO marca como publicado, permite retry na próxima execução
+        // Mas registra tentativa para não tentar infinitamente (máx 3 tentativas)
+        const tentativas = (ag.tentativas ?? 0) + 1;
+        if (tentativas >= 3) {
+          await sb.from("agendamentos_posts")
+            .update({ publicado: true, publicado_em: new Date().toISOString() })
+            .eq("id", ag.id);
+          r.status = "❌ falhou após 3 tentativas — cancelado";
+        } else {
+          await sb.from("agendamentos_posts")
+            .update({ tentativas })
+            .eq("id", ag.id);
+          r.status = `❌ falhou (tentativa ${tentativas}/3 — tentará novamente)`;
+        }
+      }
 
     } catch (e) {
       r.status = "erro";
       r.erro   = String(e);
-      // Marca como publicado para não tentar novamente indefinidamente
-      await sb.from("agendamentos_posts")
-        .update({ publicado: true, publicado_em: new Date().toISOString() })
-        .eq("id", ag.id);
     }
 
     resultados.push(r);

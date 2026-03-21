@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS agendamentos_posts (
   publicado_em     TIMESTAMPTZ,
   post_id_feed     TEXT,
   post_id_stories  TEXT,
+  tentativas       INT          NOT NULL DEFAULT 0,
   criado_em        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
@@ -74,6 +75,7 @@ CREATE TABLE IF NOT EXISTS agendamentos_posts (
 ALTER TABLE agendamentos_posts ADD COLUMN IF NOT EXISTS feed_base64     TEXT;
 ALTER TABLE agendamentos_posts ADD COLUMN IF NOT EXISTS stories_base64  TEXT;
 ALTER TABLE agendamentos_posts ADD COLUMN IF NOT EXISTS legenda         TEXT;
+ALTER TABLE agendamentos_posts ADD COLUMN IF NOT EXISTS tentativas     INT NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_agendamentos_data
   ON agendamentos_posts (agendado_para);

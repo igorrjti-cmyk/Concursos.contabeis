@@ -85,9 +85,11 @@ export default function CalendarioPage() {
     setCronLoading(true);
     setCronStatus(null);
     try {
-      const params = simular ? "?test=1" : "";
-      const res = await fetch(`/api/cron/publicar-agendados${params}`, {
-        headers: { "Authorization": `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET || "concursos2026a3f8c2d1e4b5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1xkQ9mPz3"}` },
+      // Usa rota intermediária — o secret fica no servidor, não exposto no JS
+      const res = await fetch("/api/cron/disparar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ simulacao: simular }),
       });
       const data = await res.json();
       setCronStatus(data);
