@@ -8,7 +8,7 @@ import { emailNovoConcurso, emailAlertaPrazo } from "@/lib/email";
 import type { Concurso }        from "@/lib/scraper";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300; // Cron jobs suportam até 300s no Vercel Pro
 
 export async function GET(req: Request) {
   // Segurança: Vercel injeta este header nos cron jobs
@@ -49,7 +49,13 @@ export async function GET(req: Request) {
     // cada concurso só gera um e-mail, independente da janela de tempo.
     const janela48h = new Date(hoje.getTime() - 48 * 3600000).toISOString();
 
+    // Limite de 5 emails por execução para não estourar o timeout
+    // O cron roda diariamente, então concursos novos chegam em lotes pequenos no uso normal.
+    // O DELETE da tabela notificacoes_enviadas causou o envio em massa — em uso normal isso não acontece.
+    const LIMITE_POR_EXECUCAO = 5;
+
     for (const c of concursos) {
+      if (resultados.novos >= LIMITE_POR_EXECUCAO) break;
       if (!c.dataCaptura || c.dataCaptura < janela48h) continue;
 
       // Verifica se já enviamos notificação para este concurso
