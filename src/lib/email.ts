@@ -1,38 +1,24 @@
 // src/lib/email.ts
 // Helper de e-mail usando Resend (resend.com — grátis até 3.000/mês)
-// Configure: RESEND_API_KEY e NOTIFY_EMAIL nas variáveis de ambiente
 
 import type { Concurso } from "./scraper";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const NOTIFY_EMAIL   = process.env.NOTIFY_EMAIL || ""; // seu e-mail para receber alertas
-// IMPORTANTE: FROM_EMAIL deve ser um domínio verificado no Resend (não Gmail/Outlook).
-// Se não tiver domínio próprio verificado, use o sandbox do Resend: onboarding@resend.dev
-// (só envia para o e-mail do dono da conta Resend — perfeito para uso pessoal)
-const FROM_EMAIL = process.env.FROM_EMAIL || "onboarding@resend.dev";
+const NOTIFY_EMAIL   = process.env.NOTIFY_EMAIL || "";
+const FROM_EMAIL     = process.env.FROM_EMAIL || "onboarding@resend.dev";
 
 // ─── Envia e-mail via Resend ──────────────────────────────────────────────────
 async function enviarEmail(to: string, subject: string, html: string): Promise<boolean> {
-  if (!RESEND_API_KEY) {
-    console.warn("[EMAIL] RESEND_API_KEY não configurado — e-mail não enviado");
-    return false;
-  }
-  if (!to) {
-    console.warn("[EMAIL] NOTIFY_EMAIL não configurado — e-mail não enviado");
-    return false;
-  }
+  if (!RESEND_API_KEY) { console.warn("[EMAIL] RESEND_API_KEY não configurado"); return false; }
+  if (!to)             { console.warn("[EMAIL] NOTIFY_EMAIL não configurado");   return false; }
   try {
-    const res = await fetch("https://api.resend.com/emails", {
+    const res  = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${RESEND_API_KEY}`,
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_API_KEY}` },
       body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
     });
     const data = await res.json();
     if (!res.ok) {
-      // Log detalhado: mostra o erro exato do Resend (ex: domínio não verificado, API key inválida)
       console.error(`[EMAIL] Erro Resend (HTTP ${res.status}):`, JSON.stringify(data));
       console.error(`[EMAIL] FROM=${FROM_EMAIL} | TO=${to} | SUBJECT=${subject}`);
       return false;
@@ -40,44 +26,146 @@ async function enviarEmail(to: string, subject: string, html: string): Promise<b
     console.log(`[EMAIL] Enviado com sucesso: id=${data.id} | to=${to}`);
     return true;
   } catch (e: unknown) {
-    console.error("[EMAIL] Erro de rede ao enviar e-mail:", e);
+    console.error("[EMAIL] Erro de rede:", e);
     return false;
   }
 }
 
-// ─── Estilos comuns ───────────────────────────────────────────────────────────
-const estiloBase = `
-  body { margin:0; padding:0; background:#f4f4f4; font-family:'Segoe UI',sans-serif; }
-  .container { max-width:600px; margin:0 auto; background:#fff; border-radius:12px; overflow:hidden; }
-  .header { background:linear-gradient(135deg,#0B1A38,#00C896); padding:28px 32px; }
-  .header h1 { color:#fff; margin:0; font-size:22px; font-weight:800; }
-  .header p  { color:rgba(255,255,255,.7); margin:4px 0 0; font-size:13px; }
-  .body { padding:28px 32px; }
-  .card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:16px 20px; margin-bottom:14px; }
-  .card-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
-  .cargo { font-size:16px; font-weight:700; color:#1a202c; }
-  .orgao { font-size:13px; color:#00A87A; font-weight:600; margin-top:2px; }
-  .meta  { font-size:11px; color:#718096; margin-top:2px; }
-  .badge { background:#00C896; color:#002D1F; font-size:10px; font-weight:800; padding:3px 9px; border-radius:20px; white-space:nowrap; }
-  .badge-urgente { background:#FF4B4B; color:#fff; }
-  .badge-previsto { background:#FFB800; color:#2D1F00; }
-  .grid { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
-  .tag  { background:#edf2f7; color:#4a5568; font-size:11px; padding:3px 8px; border-radius:5px; font-weight:600; }
-  .btn  { display:inline-block; background:#00C896; color:#002D1F; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:700; font-size:13px; margin-top:12px; }
-  .footer { background:#f8fafc; padding:16px 32px; text-align:center; font-size:11px; color:#a0aec0; border-top:1px solid #e2e8f0; }
-  .divider { border:none; border-top:1px solid #e2e8f0; margin:20px 0; }
-  .stat { text-align:center; }
-  .stat-num { font-size:32px; font-weight:900; color:#00C896; }
-  .stat-label { font-size:11px; color:#718096; text-transform:uppercase; letter-spacing:1px; }
-`;
-
-function rodape() {
-  return `
+// ─── Base HTML ────────────────────────────────────────────────────────────────
+function baseHtml(content: string, preheader = ""): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="color-scheme" content="light"/>
+<title>Concursos Contábeis</title>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f1117;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  img{display:block;border:0}
+  .wrapper{background:#0f1117;padding:32px 16px}
+  .card{background:#1a1d27;border-radius:16px;overflow:hidden;max-width:580px;margin:0 auto;border:1px solid #2a2d3a}
+  .header{background:linear-gradient(135deg,#0d1f3c 0%,#0a3d2e 100%);padding:32px 32px 28px;position:relative;overflow:hidden}
+  .header-accent{position:absolute;top:-40px;right:-40px;width:160px;height:160px;background:radial-gradient(circle,rgba(0,200,150,.18) 0%,transparent 70%);border-radius:50%}
+  .header-accent2{position:absolute;bottom:-30px;left:20px;width:100px;height:100px;background:radial-gradient(circle,rgba(0,150,200,.12) 0%,transparent 70%);border-radius:50%}
+  .logo-row{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+  .logo-dot{width:8px;height:8px;background:#00c896;border-radius:50%;box-shadow:0 0 8px rgba(0,200,150,.6)}
+  .logo-text{font-size:11px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:2px;text-transform:uppercase}
+  .header h1{font-size:22px;font-weight:800;color:#fff;line-height:1.3;margin-bottom:6px}
+  .header p{font-size:13px;color:rgba(255,255,255,.55)}
+  .body{padding:28px 32px}
+  .concurso-card{background:#22263a;border:1px solid #2e3347;border-radius:12px;padding:20px;margin-bottom:12px}
+  .concurso-card:last-child{margin-bottom:0}
+  .concurso-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+  .concurso-info{}
+  .cargo{font-size:17px;font-weight:800;color:#f0f2ff;line-height:1.2;margin-bottom:4px}
+  .orgao{font-size:13px;font-weight:600;color:#00c896}
+  .meta{font-size:11px;color:rgba(255,255,255,.4);margin-top:3px}
+  .badge{display:inline-block;padding:5px 12px;border-radius:20px;font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+  .badge-aberto{background:rgba(0,200,150,.15);color:#00e6a8;border:1px solid rgba(0,200,150,.3)}
+  .badge-urgente{background:rgba(255,75,75,.15);color:#ff7070;border:1px solid rgba(255,75,75,.3)}
+  .badge-previsto{background:rgba(255,184,0,.15);color:#ffd44d;border:1px solid rgba(255,184,0,.3)}
+  .tags{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  .tag{display:flex;align-items:center;gap:5px;background:#1a1e2e;border:1px solid #2e3347;border-radius:8px;padding:6px 10px;font-size:12px;color:rgba(255,255,255,.7);font-weight:500}
+  .tag-icon{font-size:13px}
+  .btn-edital{display:inline-block;background:linear-gradient(135deg,#00c896,#00a87a);color:#002d1e;padding:11px 22px;border-radius:10px;font-weight:800;font-size:13px;letter-spacing:.3px}
+  .divider{border:none;border-top:1px solid #2a2d3a;margin:20px 0}
+  .section-title{font-size:13px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .section-title span{display:inline-block;background:#2a2d3a;padding:3px 8px;border-radius:6px;font-size:11px;color:rgba(255,255,255,.4)}
+  .stats-row{display:flex;gap:12px;margin-bottom:24px}
+  .stat-box{flex:1;background:#22263a;border:1px solid #2e3347;border-radius:12px;padding:16px 12px;text-align:center}
+  .stat-num{font-size:28px;font-weight:900;line-height:1;margin-bottom:4px}
+  .stat-label{font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:1px;font-weight:600}
+  .mini-card{background:#22263a;border:1px solid #2e3347;border-radius:10px;padding:14px 16px;margin-bottom:8px}
+  .mini-card:last-child{margin-bottom:0}
+  .mini-cargo{font-size:14px;font-weight:700;color:#f0f2ff;margin-bottom:3px}
+  .mini-orgao{font-size:12px;color:#00c896;font-weight:600;margin-bottom:8px}
+  .mini-tags{display:flex;flex-wrap:wrap;gap:6px}
+  .mini-tag{font-size:11px;color:rgba(255,255,255,.5);background:#1a1e2e;border:1px solid #2e3347;border-radius:6px;padding:3px 8px;font-weight:500}
+  .cta-row{text-align:center;padding:8px 0 4px}
+  .footer{padding:20px 32px;text-align:center;border-top:1px solid #2a2d3a}
+  .footer p{font-size:11px;color:rgba(255,255,255,.25);line-height:1.8}
+  .footer a{color:rgba(255,255,255,.35)}
+  .urgente-bar{background:linear-gradient(90deg,rgba(255,75,75,.15),transparent);border-left:3px solid #ff4b4b;padding:10px 14px;border-radius:0 8px 8px 0;margin-bottom:16px;font-size:12px;color:#ff9090}
+  @media(max-width:480px){
+    .body{padding:20px 16px}
+    .header{padding:24px 20px 20px}
+    .stats-row{flex-direction:column;gap:8px}
+    .concurso-top{flex-direction:column}
+    .badge{align-self:flex-start}
+  }
+</style>
+</head>
+<body>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">${preheader}</div>
+<div class="wrapper">
+  <div class="card">
+    ${content}
     <div class="footer">
-      <p>Concursos Contábeis · @concursos.contabeis</p>
-      <p>Você está recebendo porque configurou alertas neste painel.</p>
+      <p>
+        <strong style="color:rgba(255,255,255,.4)">Concursos Contábeis</strong> · @concursos.contabeis<br/>
+        Você está recebendo porque configurou alertas neste painel.<br/>
+        <a href="${process.env.NEXT_PUBLIC_APP_URL || "#"}">Acessar painel →</a>
+      </p>
     </div>
-  `;
+  </div>
+</div>
+</body>
+</html>`;
+}
+
+// ─── Badge helper ─────────────────────────────────────────────────────────────
+function badgeConcurso(c: Concurso): string {
+  if (c.diasRestantes >= 0 && c.diasRestantes <= 3)
+    return `<span class="badge badge-urgente">⚡ ${c.diasRestantes === 0 ? "Encerra HOJE" : c.diasRestantes + "d restantes"}</span>`;
+  if (c.status === "Inscricoes Abertas")
+    return `<span class="badge badge-aberto">● Inscrições Abertas</span>`;
+  return `<span class="badge badge-previsto">◎ Previsto</span>`;
+}
+
+// ─── Card de concurso ─────────────────────────────────────────────────────────
+function cardConcurso(c: Concurso, urgente = false): string {
+  const tags = [
+    c.salario !== "-"     ? `<span class="tag"><span class="tag-icon">💰</span>${c.salario}</span>` : "",
+    c.vagas   !== "-"     ? `<span class="tag"><span class="tag-icon">🎯</span>${c.vagas}</span>` : "",
+    c.inscricao !== "-"   ? `<span class="tag"><span class="tag-icon">📅</span>${c.inscricao}</span>` : "",
+    c.dataProva !== "-"   ? `<span class="tag"><span class="tag-icon">📝</span>Prova: ${c.dataProva}</span>` : "",
+    c.banca !== "-"       ? `<span class="tag"><span class="tag-icon">🏛</span>${c.banca}</span>` : "",
+  ].filter(Boolean).join("");
+
+  return `
+    <div class="concurso-card">
+      ${urgente ? `<div class="urgente-bar">⚡ Inscrições encerrando em ${c.diasRestantes === 0 ? "HOJE" : c.diasRestantes + " dias"} — não perca!</div>` : ""}
+      <div class="concurso-top">
+        <div class="concurso-info">
+          <div class="cargo">${c.cargo}</div>
+          <div class="orgao">${c.orgao}</div>
+          <div class="meta">${c.estado}${c.nivel !== "-" ? " · " + c.nivel : ""}</div>
+        </div>
+        ${badgeConcurso(c)}
+      </div>
+      <div class="tags">${tags}</div>
+      <a href="${c.linkEdital || c.linkNoticia}" class="btn-edital">Ver Edital →</a>
+    </div>`;
+}
+
+// ─── Mini card (para listas no resumo) ───────────────────────────────────────
+function miniCard(c: Concurso): string {
+  const tags = [
+    c.salario !== "-"       ? `<span class="mini-tag">💰 ${c.salario}</span>` : "",
+    c.vagas !== "-"         ? `<span class="mini-tag">🎯 ${c.vagas}</span>` : "",
+    c.diasRestantes >= 0    ? `<span class="mini-tag">📅 ${c.diasRestantes}d</span>` : "",
+  ].filter(Boolean).join("");
+
+  return `
+    <div class="mini-card">
+      <div class="mini-cargo">${c.cargo}</div>
+      <div class="mini-orgao">${c.orgao} — ${c.estado}</div>
+      ${tags ? `<div class="mini-tags">${tags}</div>` : ""}
+    </div>`;
 }
 
 // ─── Template: novo concurso ──────────────────────────────────────────────────
@@ -85,50 +173,30 @@ export async function emailNovoConcurso(concurso: Concurso): Promise<boolean> {
   if (!NOTIFY_EMAIL) return false;
 
   const urgente = concurso.diasRestantes >= 0 && concurso.diasRestantes <= 7;
-  const badgeClass = urgente ? "badge badge-urgente" : "badge";
-  const badgeText = urgente
-    ? `⚡ ${concurso.diasRestantes}d restantes`
-    : concurso.status === "Inscricoes Abertas" ? "Inscrições Abertas" : "Previsto";
+  const dataFormatada = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
 
-  const html = `
-    <!DOCTYPE html><html><head><style>${estiloBase}</style></head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>🆕 Novo Concurso de Contabilidade</h1>
-          <p>${new Date().toLocaleDateString("pt-BR", { weekday:"long", day:"2-digit", month:"long" })}</p>
-        </div>
-        <div class="body">
-          <div class="card">
-            <div class="card-header">
-              <div>
-                <div class="cargo">${concurso.cargo}</div>
-                <div class="orgao">${concurso.orgao}</div>
-                <div class="meta">${concurso.estado} · ${concurso.nivel}${concurso.banca !== "-" ? " · " + concurso.banca : ""}</div>
-              </div>
-              <span class="${badgeClass}">${badgeText}</span>
-            </div>
-            <div class="grid">
-              <span class="tag">💰 ${concurso.salario}</span>
-              <span class="tag">🎯 ${concurso.vagas}</span>
-              ${concurso.inscricao !== "-" ? `<span class="tag">📅 ${concurso.inscricao}</span>` : ""}
-              ${concurso.dataProva !== "-" ? `<span class="tag">📝 Prova: ${concurso.dataProva}</span>` : ""}
-            </div>
-            <a href="${concurso.linkEdital || concurso.linkNoticia}" class="btn">Ver Edital →</a>
-          </div>
-          <p style="font-size:13px;color:#718096;margin-top:20px;">
-            Acesse o painel para gerar o card do Instagram e a legenda completa com hashtags.
-          </p>
-        </div>
-        ${rodape()}
+  const content = `
+    <div class="header">
+      <div class="header-accent"></div>
+      <div class="header-accent2"></div>
+      <div class="logo-row">
+        <div class="logo-dot"></div>
+        <span class="logo-text">Concursos Contábeis</span>
       </div>
-    </body></html>
-  `;
+      <h1>🆕 Novo Concurso Detectado</h1>
+      <p>${dataFormatada}</p>
+    </div>
+    <div class="body">
+      ${cardConcurso(concurso, urgente)}
+      <p style="font-size:12px;color:rgba(255,255,255,.35);margin-top:16px;text-align:center;line-height:1.6">
+        Acesse o painel para gerar o card do Instagram e a legenda completa com hashtags.
+      </p>
+    </div>`;
 
   return enviarEmail(
     NOTIFY_EMAIL,
-    `🆕 Novo concurso: ${concurso.cargo} — ${concurso.orgao} (${concurso.estado})`,
-    html
+    `🆕 ${concurso.cargo} — ${concurso.orgao} (${concurso.estado})`,
+    baseHtml(content, `Novo concurso: ${concurso.cargo} em ${concurso.orgao} — ${concurso.estado}`)
   );
 }
 
@@ -136,48 +204,28 @@ export async function emailNovoConcurso(concurso: Concurso): Promise<boolean> {
 export async function emailAlertaPrazo(concursos: Concurso[]): Promise<boolean> {
   if (!NOTIFY_EMAIL || concursos.length === 0) return false;
 
-  const itens = concursos.map(c => `
-    <div class="card">
-      <div class="card-header">
-        <div>
-          <div class="cargo">${c.cargo}</div>
-          <div class="orgao">${c.orgao}</div>
-          <div class="meta">${c.estado} · ${c.nivel}</div>
-        </div>
-        <span class="badge badge-urgente">⚡ ${c.diasRestantes === 0 ? "Encerra HOJE" : c.diasRestantes + "d restantes"}</span>
+  const content = `
+    <div class="header">
+      <div class="header-accent"></div>
+      <div class="header-accent2"></div>
+      <div class="logo-row">
+        <div class="logo-dot"></div>
+        <span class="logo-text">Concursos Contábeis</span>
       </div>
-      <div class="grid">
-        <span class="tag">💰 ${c.salario}</span>
-        <span class="tag">🎯 ${c.vagas}</span>
-        <span class="tag">📅 até ${c.inscricaoAte}</span>
-      </div>
-      <a href="${c.linkEdital || c.linkNoticia}" class="btn">Ver Edital →</a>
+      <h1>⚡ Inscrições Encerrando</h1>
+      <p>${concursos.length} concurso${concursos.length > 1 ? "s" : ""} com prazo nos próximos 3 dias</p>
     </div>
-  `).join("");
-
-  const html = `
-    <!DOCTYPE html><html><head><style>${estiloBase}</style></head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>⚡ Inscrições Encerrando em Breve</h1>
-          <p>${concursos.length} concurso${concursos.length > 1 ? "s" : ""} com prazo nos próximos 3 dias</p>
-        </div>
-        <div class="body">
-          <p style="font-size:14px;color:#4a5568;margin-bottom:20px;">
-            Ótima oportunidade para postar sobre esses concursos enquanto as inscrições ainda estão abertas!
-          </p>
-          ${itens}
-        </div>
-        ${rodape()}
-      </div>
-    </body></html>
-  `;
+    <div class="body">
+      <p style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:20px;line-height:1.6">
+        Boa oportunidade para postar sobre esses concursos enquanto as inscrições ainda estão abertas!
+      </p>
+      ${concursos.map(c => cardConcurso(c, true)).join("")}
+    </div>`;
 
   return enviarEmail(
     NOTIFY_EMAIL,
-    `⚡ ${concursos.length} concurso${concursos.length > 1 ? "s" : ""} encerrando inscrições em breve`,
-    html
+    `⚡ ${concursos.length} concurso${concursos.length > 1 ? "s" : ""} encerrando inscrições`,
+    baseHtml(content, `${concursos.length} concursos com inscrições encerrando em breve`)
   );
 }
 
@@ -192,74 +240,61 @@ export async function emailResumoSemanal(dados: {
   if (!NOTIFY_EMAIL) return false;
 
   const { novos, encerrandoEssaSemana, comProvaEssaSemana, totalPostsEssaSemana, totalConcursosAtivos } = dados;
+  const dataFormatada = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 
-  const listarConcursos = (lista: Concurso[], limite = 5) =>
-    lista.slice(0, limite).map(c => `
-      <div class="card" style="margin-bottom:8px;">
-        <div class="cargo" style="font-size:14px;">${c.cargo}</div>
-        <div class="orgao">${c.orgao} — ${c.estado}</div>
-        <div class="grid" style="margin-top:6px;">
-          <span class="tag">💰 ${c.salario}</span>
-          <span class="tag">🎯 ${c.vagas}</span>
-          ${c.diasRestantes >= 0 ? `<span class="tag">📅 ${c.diasRestantes}d</span>` : ""}
+  function secao(emoji: string, titulo: string, count: number, cor: string, lista: Concurso[], limite = 5): string {
+    if (lista.length === 0) return "";
+    const mais = lista.length > limite ? `<p style="font-size:12px;color:rgba(255,255,255,.3);text-align:center;padding:8px 0">+${lista.length - limite} mais no painel</p>` : "";
+    return `
+      <div class="section-title">${emoji} ${titulo} <span>${count}</span></div>
+      ${lista.slice(0, limite).map(c => miniCard(c)).join("")}
+      ${mais}
+      <div class="divider"></div>`;
+  }
+
+  const content = `
+    <div class="header">
+      <div class="header-accent"></div>
+      <div class="header-accent2"></div>
+      <div class="logo-row">
+        <div class="logo-dot"></div>
+        <span class="logo-text">Concursos Contábeis</span>
+      </div>
+      <h1>📊 Resumo Semanal</h1>
+      <p>Semana de ${dataFormatada}</p>
+    </div>
+    <div class="body">
+
+      <div class="stats-row">
+        <div class="stat-box">
+          <div class="stat-num" style="color:#a78bfa">${totalConcursosAtivos}</div>
+          <div class="stat-label">Concursos ativos</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num" style="color:#60a5fa">${novos.length}</div>
+          <div class="stat-label">Novos esta semana</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num" style="color:#fbbf24">${totalPostsEssaSemana}</div>
+          <div class="stat-label">Posts publicados</div>
         </div>
       </div>
-    `).join("") + (lista.length > limite ? `<p style="font-size:12px;color:#a0aec0;">+${lista.length - limite} mais no painel</p>` : "");
 
-  const html = `
-    <!DOCTYPE html><html><head><style>${estiloBase}</style></head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>📊 Resumo Semanal</h1>
-          <p>Semana de ${new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" })}</p>
-        </div>
-        <div class="body">
+      ${secao("🆕", "Novos esta semana", novos.length, "#60a5fa", novos)}
+      ${secao("⚡", "Encerrando esta semana", encerrandoEssaSemana.length, "#f87171", encerrandoEssaSemana)}
+      ${secao("📝", "Provas esta semana", comProvaEssaSemana.length, "#a78bfa", comProvaEssaSemana)}
 
-          <!-- Stats -->
-          <div style="display:flex;gap:12px;margin-bottom:24px;text-align:center;">
-            <div style="flex:1;background:#f8fafc;border-radius:10px;padding:16px;">
-              <div class="stat-num">${totalConcursosAtivos}</div>
-              <div class="stat-label">Concursos ativos</div>
-            </div>
-            <div style="flex:1;background:#f8fafc;border-radius:10px;padding:16px;">
-              <div class="stat-num" style="color:#3B82F6;">${novos.length}</div>
-              <div class="stat-label">Novos esta semana</div>
-            </div>
-            <div style="flex:1;background:#f8fafc;border-radius:10px;padding:16px;">
-              <div class="stat-num" style="color:#F59E0B;">${totalPostsEssaSemana}</div>
-              <div class="stat-label">Posts publicados</div>
-            </div>
-          </div>
-
-          ${novos.length > 0 ? `
-            <h3 style="font-size:15px;color:#1a202c;margin:0 0 12px;">🆕 Novos esta semana (${novos.length})</h3>
-            ${listarConcursos(novos)}
-            <hr class="divider">
-          ` : ""}
-
-          ${encerrandoEssaSemana.length > 0 ? `
-            <h3 style="font-size:15px;color:#EF4444;margin:0 0 12px;">⚡ Encerrando esta semana (${encerrandoEssaSemana.length})</h3>
-            ${listarConcursos(encerrandoEssaSemana)}
-            <hr class="divider">
-          ` : ""}
-
-          ${comProvaEssaSemana.length > 0 ? `
-            <h3 style="font-size:15px;color:#8B5CF6;margin:0 0 12px;">📝 Provas esta semana (${comProvaEssaSemana.length})</h3>
-            ${listarConcursos(comProvaEssaSemana)}
-            <hr class="divider">
-          ` : ""}
-
-          <p style="font-size:13px;color:#718096;margin-top:16px;text-align:center;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL || "#"}" style="color:#00A87A;font-weight:700;">
-              Acessar o painel completo →
-            </a>
-          </p>
-        </div>
-        ${rodape()}
+      <div class="cta-row">
+        <a href="${process.env.NEXT_PUBLIC_APP_URL || "#"}"
+           style="display:inline-block;background:linear-gradient(135deg,#00c896,#00a87a);color:#002d1e;padding:12px 28px;border-radius:10px;font-weight:800;font-size:13px">
+          Acessar painel completo →
+        </a>
       </div>
-    </body></html>
-  `;
+    </div>`;
 
-  return enviarEmail(NOTIFY_EMAIL, "📊 Resumo Semanal — Concursos Contábeis", html);
+  return enviarEmail(
+    NOTIFY_EMAIL,
+    `📊 Resumo Semanal — ${novos.length} novos · ${totalConcursosAtivos} ativos`,
+    baseHtml(content, `${novos.length} novos concursos esta semana, ${encerrandoEssaSemana.length} encerrando`)
+  );
 }
