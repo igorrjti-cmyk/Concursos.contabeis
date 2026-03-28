@@ -592,6 +592,15 @@ function HomeContent() {
       return a.diasRestantes - b.diasRestantes;
     });
 
+    // Na aba cards, empurra já publicados para o fim
+    if (tab === "cards") {
+      list = [...list].sort((a, b) => {
+        const aPost = historico.some(h => h.concurso_id === a.id) ? 1 : 0;
+        const bPost = historico.some(h => h.concurso_id === b.id) ? 1 : 0;
+        return aPost - bPost;
+      });
+    }
+
     return list;
   })();
 
@@ -642,9 +651,12 @@ function HomeContent() {
     }
   };
 
-  const jaPostado = (id: string) => {
-    const hoje = new Date().toDateString();
-    return historico.some(h => h.concurso_id === id && new Date(h.posted_at).toDateString() === hoje);
+  const jaPostado = (id: string) => historico.some(h => h.concurso_id === id);
+
+  const dataPostagem = (id: string) => {
+    const h = historico.find(h => h.concurso_id === id);
+    if (!h) return null;
+    return new Date(h.posted_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
   };
 
   // Toast helper
@@ -1152,7 +1164,7 @@ function HomeContent() {
                         <BadgeUrgente dias={c.diasRestantes} />
                         {postado && (
                           <span style={{ background: "rgba(0,200,150,.12)", color: "#00C896", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
-                            ✓ Postado hoje
+                            ✓ Postado {dataPostagem(c.id)}
                           </span>
                         )}
                         {temProva && (
@@ -1317,7 +1329,19 @@ function HomeContent() {
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 28 }} className="cards-wrap">
               {filtered.map(c => (
-                <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+                <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center", position: "relative", opacity: jaPostado(c.id) ? 0.45 : 1, transition: "opacity .2s" }}>
+                  {jaPostado(c.id) && (
+                    <div style={{
+                      position: "absolute", top: 10, right: 10, zIndex: 10,
+                      background: "#16a34a", color: "#fff",
+                      fontSize: 10, fontWeight: 800,
+                      padding: "3px 10px", borderRadius: 999,
+                      boxShadow: "0 2px 8px rgba(0,0,0,.4)",
+                      pointerEvents: "none",
+                    }}>
+                      ✓ Publicado {dataPostagem(c.id)}
+                    </div>
+                  )}
                   <InstagramCard concurso={c} formato={cardFormato} />
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 390 }}>
 
