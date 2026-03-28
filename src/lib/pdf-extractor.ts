@@ -224,12 +224,21 @@ export async function extrairDetalhesDoPDF(pdfUrl: string): Promise<Partial<Deta
   // Agora é chamado uma única vez aqui e os resultados são passados diretamente.
   const crono         = extrairCronograma(textoNorm);
   const banca         = extrairBanca(textoRaw);
-  const dataProva     = crono.dataProva !== "-" ? crono.dataProva     : extrairDataProvaFallback(textoNorm);
+
+  // Tenta extrair data de prova específica para o cargo contábil (editais multi-cargo)
+  // Se encontrada, tem prioridade sobre a data geral do cronograma
+  const dataProvaContabil = extrairDataProvaParaCargoContabil(textoNorm);
+  const dataProvaCrono    = crono.dataProva !== "-" ? crono.dataProva : extrairDataProvaFallback(textoNorm);
+
+  // Usa data do cargo contábil se for diferente da geral (multi-cargo com datas distintas)
+  // ou a data geral se a do cargo contábil não foi encontrada
+  const dataProva = dataProvaContabil !== "-" ? dataProvaContabil : dataProvaCrono;
+
   const dataResultado = crono.dataResultado !== "-" ? crono.dataResultado : extrairDataResultadoFallback(textoNorm, dataProva);
   const cargosContabeis = extrairCargos(textoNorm);
   const requisito       = extrairRequisito(textoRaw);
 
-  console.log(`[PDF] banca=${banca} prova=${dataProva} resultado=${dataResultado}`);
+  console.log(`[PDF] banca=${banca} provaContabil=${dataProvaContabil} provaCrono=${dataProvaCrono} provaFinal=${dataProva} resultado=${dataResultado}`);
 
   const cargosDetalhados = extrairTabelaCargos(textoNorm, textoRaw);
   console.log(`[PDF] cargosDetalhados=${cargosDetalhados.length}`);
@@ -345,6 +354,59 @@ function extrairDataProvaFallback(textoNorm: string): string {
   return "-";
 }
 
+/**
+ * Em editais com vários cargos e datas de prova diferentes por nível,
+ * tenta encontrar a data específica do cargo contábil (Contador, Auditor Fiscal etc.)
+ *
+ * Estratégias (em ordem de prioridade):
+ * 1. Janela de contexto próxima a menção do cargo contábil
+ * 2. Se há múltiplas datas de prova no cronograma, prefere a associada a "Superior"
+ *    (cargos contábeis são de nível superior e costumam ter prova depois dos de nível médio)
+ */
+function extrairDataProvaParaCargoContabil(textoNorm: string): string {
+  const KW_CARGO_CONTABIL = [
+    "contador", "contadora", "contábil", "contabilidade",
+    "auditor fiscal", "auditor interno", "fiscal de tribut",
+    "técnico em contabilidade", "tecnico em contabilidade",
+    "analista contábil", "analista contabil",
+  ];
+
+  // Estratégia 1: janela de contexto ao redor de menção do cargo contábil
+  for (const kw of KW_CARGO_CONTABIL) {
+    let pos = 0;
+    while (true) {
+      const idx = textoNorm.toLowerCase().indexOf(kw, pos);
+      if (idx === -1) break;
+      pos = idx + 1;
+      const janela = textoNorm.substring(Math.max(0, idx - 100), idx + 800);
+      const provaRe = [
+        /aplica[cç][aã]o\s+das?\s+provas?[\s\S]{0,100}?(\d{2}\/\d{2}\/\d{4})/i,
+        /data\s+(?:da\s+)?prova[\s\S]{0,100}?(\d{2}\/\d{2}\/\d{4})/i,
+        /provas?\s+(?:objetivas?|escritas?)[\s\S]{0,100}?(\d{2}\/\d{2}\/\d{4})/i,
+        /realiza[cç][aã]o[\s\S]{0,100}?(\d{2}\/\d{2}\/\d{4})/i,
+      ];
+      for (const re of provaRe) {
+        const m = janela.match(re);
+        if (m?.[1] && dataValidaPDF(m[1])) return m[1];
+      }
+    }
+  }
+
+  // Estratégia 2: múltiplas datas de prova → procura linha associada a "superior"
+  // Ex: "Provas Nível Superior 24/05/2026" ou "Superior 24/05/2026"
+  const superiorRe = [
+    /(?:n[íi]vel\s+)?superior[^\n]{0,80}?(\d{2}\/\d{2}\/\d{4})/i,
+    /(\d{2}\/\d{2}\/\d{4})[^\n]{0,40}(?:n[íi]vel\s+)?superior/i,
+    /provas?\s+(?:de\s+)?n[íi]vel\s+superior[^\n]{0,60}?(\d{2}\/\d{2}\/\d{4})/i,
+  ];
+  for (const re of superiorRe) {
+    const m = textoNorm.match(re);
+    if (m?.[1] && dataValidaPDF(m[1])) return m[1];
+  }
+
+  return "-";
+}
+
 function extrairDataResultadoFallback(textoNorm: string, dataProva: string): string {
   const padroes = [
     /divulga[cç][aã]o\s+(?:do\s+)?(?:resultado|gabarito)\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
@@ -383,8 +445,12 @@ function extrairCargos(texto: string): string[] {
       }
     }
     if (!found && linha.length >= 4 && linha.length <= 60) {
-      const c = linha.replace(/\s+/g, " ").replace(/[^\w\sÀ-ÿ\-\/]/g, "").trim();
-      if (c.length >= 4) cargos.add(c.replace(/(?:^|\s)\S/g, ch => ch.toUpperCase()));
+      // Rejeita linhas que contenham dígitos (ex: "Contador 3 vagas R$ 12.500")
+      // — esses são linhas de tabela, não nomes limpos de cargo
+      if (!/\d/.test(linha)) {
+        const c = linha.replace(/\s+/g, " ").replace(/[^\w\sÀ-ÿ\-\/]/g, "").trim();
+        if (c.length >= 4) cargos.add(c.replace(/(?:^|\s)\S/g, ch => ch.toUpperCase()));
+      }
     }
   }
   return Array.from(cargos).slice(0, 8);

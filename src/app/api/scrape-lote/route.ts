@@ -197,6 +197,32 @@ export async function GET(req: Request) {
         }
       }
 
+      // Último fallback: se cargoDisplay ainda é "Vários Cargos",
+      // busca menções diretas de cargos contábeis no texto completo da notícia
+      if (cargoDisplay === "Vários Cargos") {
+        const textoNoticia = det.textoHtml || (det.requisito + " " + det.cargosContabeis.join(" "));
+        const mencoesFallbackLote: [RegExp, string][] = [
+          [/\bcontador(?:a)?\b/i, "Contador"],
+          [/\btécnico\s+em\s+contabilidade\b/i, "Técnico em Contabilidade"],
+          [/\btecnico\s+em\s+contabilidade\b/i, "Técnico em Contabilidade"],
+          [/\bauditor\s+fiscal\b/i, "Auditor Fiscal"],
+          [/\bauditor\s+interno\b/i, "Auditor Interno"],
+          [/\banalista\s+cont[aá]b(?:il|ilidade)\b/i, "Analista Contábil"],
+          [/\bfiscal\s+de\s+tribut\w+\b/i, "Fiscal de Tributos"],
+        ];
+        const cargosEncontradosLote: string[] = [];
+        for (const [re, nome] of mencoesFallbackLote) {
+          if (re.test(textoNoticia) && !cargosEncontradosLote.includes(nome)) {
+            cargosEncontradosLote.push(nome);
+          }
+        }
+        if (cargosEncontradosLote.length === 1) {
+          cargoDisplay = cargosEncontradosLote[0];
+        } else if (cargosEncontradosLote.length > 1) {
+          cargoDisplay = cargosEncontradosLote.join(", ");
+        }
+      }
+
       // Itens vindos de /concursos/ (inscrições encerradas) começam como "Previsto"
       // e são reclassificados para "Aguardando Prova" se tiverem prova futura
       const ehUrlConcursos = CONCURSOS_URLS_LOTE.some(u => urlPath.startsWith(u));

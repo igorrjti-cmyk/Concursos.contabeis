@@ -638,6 +638,7 @@ export interface DetalhesEdital {
   requisito: string;
   ehProcessoSeletivo: boolean;
   cargosDetalhados?: { cargo: string; vagas: string; salario: string; nivel: string; requisito: string }[];
+  textoHtml?: string; // texto completo do HTML da notícia para fallback de cargo
 }
 
 export function extrairDetalhes(texto: string): DetalhesEdital {
@@ -1170,6 +1171,7 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
     }
   }
 
+  det.textoHtml = texto;
   return det;
 }
 
@@ -1330,6 +1332,32 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       );
       if (contabeisDetalhados.length === 1) {
         cargoDisplay = contabeisDetalhados[0].cargo;
+      }
+    }
+
+    // Último fallback: se cargoDisplay ainda é "Vários Cargos",
+    // busca menções diretas de cargos contábeis no texto completo da notícia (HTML)
+    if (cargoDisplay === "Vários Cargos") {
+      const textoNoticia = det.textoHtml || (det.requisito + " " + det.cargosContabeis.join(" "));
+      const mencoesFallback: [RegExp, string][] = [
+        [/\bcontador(?:a)?\b/i, "Contador"],
+        [/\btécnico\s+em\s+contabilidade\b/i, "Técnico em Contabilidade"],
+        [/\btecnico\s+em\s+contabilidade\b/i, "Técnico em Contabilidade"],
+        [/\bauditor\s+fiscal\b/i, "Auditor Fiscal"],
+        [/\bauditor\s+interno\b/i, "Auditor Interno"],
+        [/\banalista\s+cont[aá]b(?:il|ilidade)\b/i, "Analista Contábil"],
+        [/\bfiscal\s+de\s+tribut\w+\b/i, "Fiscal de Tributos"],
+      ];
+      const cargosEncontrados: string[] = [];
+      for (const [re, nome] of mencoesFallback) {
+        if (re.test(textoNoticia) && !cargosEncontrados.includes(nome)) {
+          cargosEncontrados.push(nome);
+        }
+      }
+      if (cargosEncontrados.length === 1) {
+        cargoDisplay = cargosEncontrados[0];
+      } else if (cargosEncontrados.length > 1) {
+        cargoDisplay = cargosEncontrados.join(", ");
       }
     }
 
