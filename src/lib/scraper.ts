@@ -87,6 +87,8 @@ const BANCAS_CONHECIDAS = [
 
   // ── Confirmadas nos editais reais dos concursos monitorados ───────────────
   "FADENOR",                   // Prefeitura de Paracatu MG
+  "ÁPICE CONSULTORIA",         // Prefeitura de Itatuba PB
+  "APICE CONSULTORIA",         // variante sem acento
   "CAP CONCURSOS",             // Câmara de Piedade do Rio Grande MG
   "NOSSO RUMO",                // Prefeitura de São João da Boa Vista SP
   "INSTITUTO NOSSO RUMO",      // variante
@@ -160,6 +162,8 @@ const DOMINIO_BANCA: Record<string, string> = {
   "nossorumo.org.br":       "NOSSO RUMO",
   "institutonossorumo.org": "NOSSO RUMO",
   "fadenor.com.br":         "FADENOR",
+  "apiceconsultoria.com":   "ÁPICE CONSULTORIA",
+  "apiceconsultoria.com.br":"ÁPICE CONSULTORIA",
   "cognus.org.br":          "COGNUS",
   "exatus.org.br":          "EXATUS",
   "legalle.org.br":         "LEGALLE",
@@ -692,14 +696,23 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
     ];
     for (const re of resCronoPro) {
       const m = secaoCrono.match(re);
-      if (m?.[1]) { out.dataProva = m[1]; break; }
+      if (m?.[1] && dataValida(m[1])) { out.dataProva = m[1]; break; }
     }
     if (out.dataProva === "-") {
       // fallback: primeira data na seção cronograma após "prova"
       const mCrono = secaoCrono.match(/prova[^.]{0,60}(\d{2}\/\d{2}\/\d{4})/i);
-      if (mCrono?.[1]) out.dataProva = mCrono[1];
+      if (mCrono?.[1] && dataValida(mCrono[1])) out.dataProva = mCrono[1];
     }
   }
+
+  // Extrai data de encerramento das inscrições para usar como limite mínimo da prova.
+  // Bug fix: impede que data de inscrição seja confundida com data de prova.
+  const inscricaoAteMatch = textoNorm.match(
+    /inscri[cç][oõ]es?\s+(?:at[eé]|encerr\w+|final\w*|prazo\w*)[^.]{0,60}?(\d{2}\/\d{2}\/\d{4})/i
+  ) || textoNorm.match(/at[eé]\s+(?:o\s+dia\s+)?(\d{2}\/\d{2}\/\d{4})/i);
+  const tsInscricaoAte = inscricaoAteMatch?.[1]
+    ? (() => { const [d,m,y] = inscricaoAteMatch[1].split("/").map(Number); return new Date(y,m-1,d).getTime(); })()
+    : 0;
 
   // Testa no texto com datas convertidas (pega "17 de maio de 2026")
   const provaRe = [
@@ -712,15 +725,24 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
     /aplicadas?\s+na\s+cidade\s+de\s+[^,]{1,40},\s+no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
     /no\s+dia\s+(\d{2}\/\d{2}\/\d{4})[^\n]{0,60}prova/i,
     /prova[^\n]{0,60}no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
-    /aplicadas?\s+(?:na\s+data\s+(?:prevista\s+)?de\s+)?(\d{2}\/\d{2}\/\d{4})/i,
+    // Removidas regex frouxas que confundiam data de inscrição com data de prova:
+    // - /aplicadas?\s+(?:na\s+data\s+...)?(\d{2}\/...)/ → muito ampla, pegava datas de inscrição
+    // - /(\d{2}\/...)[^.]{0,30}?prova/i → capturava qualquer data anterior à palavra "prova"
     /data\s+prov[aá]vel\s+(?:da\s+prova\s+)?[:\-]?\s*(\d{2}\/\d{2}\/\d{4})/i,
     /provas?[.\s\-]{2,}(\d{2}\/\d{2}\/\d{4})/i,
     /provas?\s*:\s*(\d{2}\/\d{2}\/\d{4})/i,
-    /(\d{2}\/\d{2}\/\d{4})[^.]{0,30}?prova/i,
   ];
   for (const re of provaRe) {
     const m = textoNorm.match(re);
-    if (m?.[1] && dataValida(m[1])) { out.dataProva = m[1]; break; }
+    if (!m?.[1] || !dataValida(m[1])) continue;
+    // Validação extra: data de prova deve ser POSTERIOR ao encerramento das inscrições
+    if (tsInscricaoAte > 0) {
+      const [dp, mp, yp] = m[1].split("/").map(Number);
+      const tsProva = new Date(yp, mp - 1, dp).getTime();
+      if (tsProva <= tsInscricaoAte) continue; // data muito cedo — provavelmente é inscrição
+    }
+    out.dataProva = m[1];
+    break;
   }
 
   // Data do resultado — também usa textoNorm (datas por extenso convertidas)
