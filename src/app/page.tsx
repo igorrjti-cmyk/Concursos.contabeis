@@ -342,6 +342,7 @@ function HomeContent() {
   const [agendarModal, setAgendarModal] = useState<{ concurso: Concurso; modo: "feed" | "stories" | "ambos" } | null>(null);
   const [agendadoPara, setAgendadoPara] = useState<string>("");
   const [dropdownAberto, setDropdownAberto] = useState<string | null>(null);
+  const [agendamentos, setAgendamentos] = useState<{ concurso_id: string; agendado_para: string; publicado: boolean }[]>([]);
 
   // Sincroniza filtros na URL sempre que mudam
   useEffect(() => {
@@ -526,6 +527,14 @@ function HomeContent() {
     } catch {}
   }, []);
 
+  const fetchAgendamentos = useCallback(async () => {
+    try {
+      const r = await fetch("/api/agendamentos");
+      const d = await r.json();
+      if (d.ok) setAgendamentos(d.agendamentos ?? []);
+    } catch {}
+  }, []);
+
   const toggleFavorito = async (c: import("@/lib/scraper").Concurso) => {
     setFavoritando(c.id);
     const ehFav = favoritos.some(f => f.concurso_id === c.id);
@@ -551,7 +560,8 @@ function HomeContent() {
     fetchHistorico();
     fetchFavoritos();
     fetchStats();
-  }, [fetchConcursos, fetchHistorico, fetchFavoritos, fetchStats]);
+    fetchAgendamentos();
+  }, [fetchConcursos, fetchHistorico, fetchFavoritos, fetchStats, fetchAgendamentos]);
 
   // Filtragem + ordenação
   const filtered = (() => {
@@ -592,12 +602,14 @@ function HomeContent() {
       return a.diasRestantes - b.diasRestantes;
     });
 
-    // Na aba cards, empurra já publicados para o fim
+    // Na aba cards: não publicados → agendados (opacidade 60%) → publicados (opacidade 45%)
     if (tab === "cards") {
       list = [...list].sort((a, b) => {
-        const aPost = historico.some(h => h.concurso_id === a.id) ? 1 : 0;
-        const bPost = historico.some(h => h.concurso_id === b.id) ? 1 : 0;
-        return aPost - bPost;
+        const peso = (c: typeof a) =>
+          historico.some(h => h.concurso_id === c.id) ? 2
+          : agendamentos.some(ag => ag.concurso_id === c.id && !ag.publicado) ? 1
+          : 0;
+        return peso(a) - peso(b);
       });
     }
 
@@ -659,6 +671,14 @@ function HomeContent() {
     return new Date(h.posted_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
   };
 
+  // Agendamentos pendentes (não publicados ainda)
+  const jaAgendado = (id: string) => agendamentos.some(a => a.concurso_id === id && !a.publicado);
+  const dataAgendamento = (id: string) => {
+    const a = agendamentos.find(a => a.concurso_id === id && !a.publicado);
+    if (!a) return null;
+    return new Date(a.agendado_para).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  };
+
   // Toast helper
   // Fecha dropdown ao clicar fora (mousedown antes do click, evita race condition)
   useEffect(() => {
@@ -712,6 +732,7 @@ function HomeContent() {
         if (!data.ok) throw new Error(data.error || "Erro ao salvar agendamento");
         const partes = modo === "feed" ? "Feed" : modo === "stories" ? "Stories" : "Feed + Stories";
         showToast(`⏰ ${partes} agendado para ${new Date(agendarEm).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}!`, "ok");
+        fetchAgendamentos();
         return;
       }
 
@@ -1329,7 +1350,7 @@ function HomeContent() {
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 28 }} className="cards-wrap">
               {filtered.map(c => (
-                <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center", position: "relative", opacity: jaPostado(c.id) ? 0.45 : 1, transition: "opacity .2s" }}>
+                <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center", position: "relative", opacity: jaPostado(c.id) ? 0.45 : jaAgendado(c.id) ? 0.6 : 1, transition: "opacity .2s" }}>
                   {jaPostado(c.id) && (
                     <div style={{
                       position: "absolute", top: 10, right: 10, zIndex: 10,
@@ -1340,6 +1361,18 @@ function HomeContent() {
                       pointerEvents: "none",
                     }}>
                       ✓ Publicado {dataPostagem(c.id)}
+                    </div>
+                  )}
+                  {!jaPostado(c.id) && jaAgendado(c.id) && (
+                    <div style={{
+                      position: "absolute", top: 10, right: 10, zIndex: 10,
+                      background: "#b45309", color: "#fff",
+                      fontSize: 10, fontWeight: 800,
+                      padding: "3px 10px", borderRadius: 999,
+                      boxShadow: "0 2px 8px rgba(0,0,0,.4)",
+                      pointerEvents: "none",
+                    }}>
+                      ⏰ Agendado {dataAgendamento(c.id)}
                     </div>
                   )}
                   <InstagramCard concurso={c} formato={cardFormato} />
