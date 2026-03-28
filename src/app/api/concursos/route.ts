@@ -204,6 +204,9 @@ export async function GET(req: Request) {
 }
 
 // DELETE - limpa o cache do Supabase
+// O controle de reenvio de e-mails é feito pelo cron de notificações,
+// que usa historico_posts + agendamentos_posts + notificacoes_enviadas
+// como fonte de verdade — independente do cache.
 export async function DELETE() {
   try {
     const sb = getSupabase();
@@ -213,6 +216,7 @@ export async function DELETE() {
         { status: 503 }
       );
     }
+
     const { error } = await sb
       .from("cache_concursos")
       .delete()

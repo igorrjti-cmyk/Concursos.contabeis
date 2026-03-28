@@ -42,31 +42,37 @@ export async function GET(req: Request) {
     hoje.setHours(0, 0, 0, 0);
 
     // ── 1. Notificação de concursos NOVOS ──────────────────────────────────
-    // "Novo" = capturado nas últimas 48h E ainda não notificado
-    // Usa 48h (não 24h) para cobrir casos onde o scraping atrasou ou o cron
-    // de atualização rodou depois do horário esperado.
-    // O controle de duplicatas (tabela notificacoes_enviadas) garante que
-    // cada concurso só gera um e-mail, independente da janela de tempo.
-    const janela48h = new Date(hoje.getTime() - 48 * 3600000).toISOString();
+    // "Novo" = concurso presente no cache que NUNCA foi publicado, agendado
+    // ou notificado por e-mail. Independe de dataCaptura ou limpeza de cache.
+    //
+    // Fontes de verdade (consultadas em paralelo):
+    //   • historico_posts      — já publicado no feed/stories do Instagram
+    //   • agendamentos_posts   — já agendado para publicação (publicado ou não)
+    //   • notificacoes_enviadas — já gerou e-mail de notificação
+    //
+    // Qualquer concurso_id presente nessas tabelas é "já visto" e não gera
+    // novo e-mail, mesmo após limpeza de cache ou re-scraping completo.
 
-    // Limite de 5 emails por execução para não estourar o timeout
-    // O cron roda diariamente, então concursos novos chegam em lotes pequenos no uso normal.
-    // O DELETE da tabela notificacoes_enviadas causou o envio em massa — em uso normal isso não acontece.
     const LIMITE_POR_EXECUCAO = 5;
+
+    // 3 queries em paralelo — monta o set de IDs já vistos
+    const [resHistorico, resAgendamentos, resNotificados] = await Promise.all([
+      sb.from("historico_posts").select("concurso_id"),
+      sb.from("agendamentos_posts").select("concurso_id"),
+      sb.from("notificacoes_enviadas").select("concurso_id").eq("tipo", "novo_concurso"),
+    ]);
+
+    const idsJaVistos = new Set<string>([
+      ...(resHistorico.data    ?? []).map(r => r.concurso_id).filter(Boolean),
+      ...(resAgendamentos.data ?? []).map(r => r.concurso_id).filter(Boolean),
+      ...(resNotificados.data  ?? []).map(r => r.concurso_id).filter(Boolean),
+    ]);
 
     for (const c of concursos) {
       if (resultados.novos >= LIMITE_POR_EXECUCAO) break;
-      if (!c.dataCaptura || c.dataCaptura < janela48h) continue;
 
-      // Verifica se já enviamos notificação para este concurso
-      const { data: jaEnviado } = await sb
-        .from("notificacoes_enviadas")
-        .select("id")
-        .eq("tipo", "novo_concurso")
-        .eq("concurso_id", c.id)
-        .maybeSingle();
-
-      if (jaEnviado) continue;
+      // Pula se já foi publicado, agendado ou notificado alguma vez
+      if (idsJaVistos.has(c.id)) continue;
 
       const ok = await emailNovoConcurso(c);
       if (ok) {
@@ -74,6 +80,7 @@ export async function GET(req: Request) {
           tipo: "novo_concurso",
           concurso_id: c.id,
         });
+        idsJaVistos.add(c.id); // evita reprocessar no mesmo loop
         resultados.novos++;
       }
     }

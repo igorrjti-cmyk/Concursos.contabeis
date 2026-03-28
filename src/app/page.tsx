@@ -400,13 +400,17 @@ function HomeContent() {
   };
 
   const clearCache = async () => {
-    if (!await confirmar("Limpar o cache do Supabase? O próximo acesso vai fazer um novo scraping.")) return;
+    if (!await confirmar("Limpar o cache e buscar dados frescos agora?")) return;
     setClearing(true);
     try {
       const res  = await fetch("/api/concursos", { method: "DELETE" });
       const data = await res.json();
-      if (data.ok) alert("Cache limpo! Clique em Atualizar para buscar dados frescos.");
-      else alert("Erro: " + data.error);
+      if (data.ok) {
+        // Dispara o re-scraping automaticamente após limpar
+        await fetchConcursos(true);
+      } else {
+        alert("Erro ao limpar cache: " + data.error);
+      }
     } finally {
       setClearing(false);
     }
