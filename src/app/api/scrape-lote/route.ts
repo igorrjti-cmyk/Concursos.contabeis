@@ -178,9 +178,24 @@ export async function GET(req: Request) {
       if (seen.has(key)) continue;
       seen.add(key);
 
-      const cargoDisplay = det.cargosContabeis.length > 0 && item.cargo === "Vários Cargos"
+      let cargoDisplay = det.cargosContabeis.length > 0 && item.cargo === "Vários Cargos"
         ? det.cargosContabeis.join(", ")
         : filtrarCargosContabeis(item.cargo || "-");
+
+      // Se ainda é "Vários Cargos" mas o PDF retornou exatamente 1 cargo detalhado, usa ele
+      if (cargoDisplay === "Vários Cargos" || cargoDisplay === (item.cargo || "")) {
+        const CONTABIL_KW_CHECK = [
+          "contador", "contadora", "contábil", "contabilidade", "auditor",
+          "fiscal", "tribut", "técnico em cont", "tecnico em cont", "analista cont",
+          "controle interno",
+        ];
+        const detUnico = (det.cargosDetalhados ?? []).filter(cd =>
+          CONTABIL_KW_CHECK.some(kw => cd.cargo.toLowerCase().includes(kw))
+        );
+        if (detUnico.length === 1) {
+          cargoDisplay = detUnico[0].cargo;
+        }
+      }
 
       // Itens vindos de /concursos/ (inscrições encerradas) começam como "Previsto"
       // e são reclassificados para "Aguardando Prova" se tiverem prova futura

@@ -282,23 +282,37 @@ function dataValidaPDF(d: string): boolean {
 function extrairCronograma(textoNorm: string): { dataProva: string; dataResultado: string } {
   let dataProva = "-";
   let dataResultado = "-";
-  const idx = textoNorm.search(/cronograma\s+do\s+concurso/i);
+
+  // Aceita variações: "Cronograma do Concurso", "Cronograma Geral", "Cronograma:" etc.
+  const idx = textoNorm.search(/cronograma(?:\s+(?:do\s+concurso|geral|de\s+atividades))?\s*[:\-]?/i);
   if (idx === -1) return { dataProva, dataResultado };
-  const secao = textoNorm.substring(idx, idx + 2000);
+  const secao = textoNorm.substring(idx, idx + 3000);
+
   const provaPatterns = [
     /aplica[cç][aã]o\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
     /provas?\s+objetivas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
     /realiza[cç][aã]o\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    // Tabela sem separador: "Aplicação das Provas31/03/2026"
+    /aplica[cç][aã]o\s+das?\s+provas?(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?\s+objetivas?(\d{2}\/\d{2}\/\d{4})/i,
+    /realiza[cç][aã]o\s+das?\s+provas?(\d{2}\/\d{2}\/\d{4})/i,
+    // Linha com somente data após menção de prova
+    /(?:^|\n)[^\n]*prova[^\n]*(\d{2}\/\d{2}\/\d{4})/i,
   ];
   for (const re of provaPatterns) {
     const m = secao.match(re);
     if (m?.[1] && dataValidaPDF(m[1])) { dataProva = m[1]; break; }
   }
+
   const resPatterns = [
     /divulga[cç][aã]o\s+(?:do\s+)?resultado[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
     /resultado\s+(?:final|definitivo)[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
     /homologa[cç][aã]o[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    // Tabela sem separador
+    /divulga[cç][aã]o\s+(?:do\s+)?resultado(\d{2}\/\d{2}\/\d{4})/i,
+    /resultado\s+(?:final|definitivo)(\d{2}\/\d{2}\/\d{4})/i,
+    /homologa[cç][aã]o(\d{2}\/\d{2}\/\d{4})/i,
   ];
   for (const re of resPatterns) {
     const m = secao.match(re);
@@ -317,12 +331,16 @@ function extrairDataProvaFallback(textoNorm: string): string {
     /aplicadas?\s+na\s+cidade\s+de\s+[^,]{1,40},\s+no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
     /no\s+dia\s+(\d{2}\/\d{2}\/\d{4})[\s\S]{0,60}prova/i,
     /prova[\s\S]{0,60}no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
+    // Padrões de tabela: data colada ao texto (sem espaço separador)
+    /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?\s+(?:objetivas?|escritas?)(\d{2}\/\d{2}\/\d{4})/i,
+    /realiza[cç][aã]o\s+das?\s+provas?(\d{2}\/\d{2}\/\d{4})/i,
     /prova[^\n]{0,40}(\d{2}\/\d{2}\/\d{4})/i,
     /(\d{2}\/\d{2}\/\d{4})[^\n]{0,40}prova/i,
   ];
   for (const re of padroes) {
     const m = textoNorm.match(re);
-    if (m?.[1]) return m[1];
+    if (m?.[1] && dataValidaPDF(m[1])) return m[1];
   }
   return "-";
 }

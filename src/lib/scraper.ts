@@ -1320,6 +1320,19 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       cargoDisplay = det.cargosContabeis.join(", ");
     }
 
+    // Se ainda é "Vários Cargos" mas o PDF retornou exatamente 1 cargo detalhado, usa ele
+    if (
+      (cargoDisplay === "Vários Cargos" || cargoDisplay === cargoFinal) &&
+      det.cargosDetalhados && det.cargosDetalhados.length >= 1
+    ) {
+      const contabeisDetalhados = det.cargosDetalhados.filter(cd =>
+        CARGO_CONTABIL_KW.some(kw => cd.cargo.toLowerCase().includes(kw))
+      );
+      if (contabeisDetalhados.length === 1) {
+        cargoDisplay = contabeisDetalhados[0].cargo;
+      }
+    }
+
     // Rejeição final: se a data de prova já passou, não inclui no resultado
     if (det.dataProva && det.dataProva !== "-") {
       const mpFinal = det.dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
