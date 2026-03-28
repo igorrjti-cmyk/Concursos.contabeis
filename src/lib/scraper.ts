@@ -645,7 +645,7 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
   const out: DetalhesEdital = {
     dataProva: "-", dataResultado: "-", banca: "-",
     linkEdital: "", cargosContabeis: [], requisito: "-",
-    ehProcessoSeletivo: false, cargosDetalhados: [],
+    ehProcessoSeletivo: false, cargosDetalhados: [], textoHtml: "",
   };
 
   // Valida se uma data extraída faz sentido para um concurso público atual
@@ -1069,7 +1069,7 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   const empty: DetalhesEdital = {
     dataProva: "-", dataResultado: "-", banca: "-",
     linkEdital: "", cargosContabeis: [], requisito: "-",
-    ehProcessoSeletivo: false,
+    ehProcessoSeletivo: false, textoHtml: "",
   };
   if (!url) return empty;
   const html = await fetchComTimeout(url);
@@ -1248,7 +1248,7 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     const resultados = await Promise.all(
       lote.map(item => item.linkNoticia
         ? scrapeDetalhe(item.linkNoticia)
-        : Promise.resolve({ dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "", cargosContabeis: [], requisito: "-", ehProcessoSeletivo: false, cargosDetalhados: [] } as DetalhesEdital)
+        : Promise.resolve({ dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "", cargosContabeis: [], requisito: "-", ehProcessoSeletivo: false, cargosDetalhados: [], textoHtml: "" } as DetalhesEdital)
       )
     );
     detalhes.push(...resultados);
@@ -1259,7 +1259,7 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     let det: DetalhesEdital = detalhes[i] ?? {
       dataProva: "-", dataResultado: "-", banca: "-",
       linkEdital: "", cargosContabeis: [], requisito: "-",
-      ehProcessoSeletivo: false,
+      ehProcessoSeletivo: false, textoHtml: "",
     };
 
     // Descarta se o texto da notícia indica processo seletivo

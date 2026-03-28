@@ -137,7 +137,7 @@ export async function GET(req: Request) {
       lote.map(item =>
         item.linkNoticia
           ? scrapeDetalhe(item.linkNoticia)
-          : Promise.resolve({ dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "", cargosContabeis: [], requisito: "-", ehProcessoSeletivo: false, cargosDetalhados: [] })
+          : Promise.resolve({ dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "", cargosContabeis: [], requisito: "-", ehProcessoSeletivo: false, cargosDetalhados: [], textoHtml: "" })
       )
     );
 
