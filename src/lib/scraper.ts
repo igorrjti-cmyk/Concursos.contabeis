@@ -709,42 +709,56 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
 
   // Extrai data de encerramento das inscrições para usar como limite mínimo da prova.
   // Bug fix: impede que data de inscrição seja confundida com data de prova.
+  // IMPORTANTE: usar regex específica para não capturar a data da prova como "inscricaoAte"
   const inscricaoAteMatch = textoNorm.match(
-    /inscri[cç][oõ]es?\s+(?:at[eé]|encerr\w+|final\w*|prazo\w*)[^.]{0,60}?(\d{2}\/\d{2}\/\d{4})/i
-  ) || textoNorm.match(/at[eé]\s+(?:o\s+dia\s+)?(\d{2}\/\d{2}\/\d{4})/i);
+    /inscri[cç][oõ]es?\s+(?:at[eé]|encerr\w+|v[aá]lid\w*|prazo)[^.]{0,80}?(\d{2}\/\d{2}\/\d{4})/i
+  ) || textoNorm.match(
+    /(?:per[íi]odo\s+de\s+inscri[cç][oõ]es?|prazo\s+(?:final\s+)?das?\s+inscri[cç][oõ]es?)[^.]{0,80}?(\d{2}\/\d{2}\/\d{4})/i
+  );
+  // Só usa a data se for claramente de inscrição (não captura data de prova)
   const tsInscricaoAte = inscricaoAteMatch?.[1]
     ? (() => { const [d,m,y] = inscricaoAteMatch[1].split("/").map(Number); return new Date(y,m-1,d).getTime(); })()
     : 0;
 
   // Testa no texto com datas convertidas (pega "17 de maio de 2026")
-  const provaRe = [
+  // As primeiras regex da lista são mais confiáveis (explícitas) — não aplicar validação de tsInscricaoAte nelas
+  const provaReConfiavel = [
     /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+de\s+realiza[cç][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
     /provas?\s+(?:objetivas?|escritas?|pr[áa]ticas?)\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
     /previstas?\s+para\s+(?:ser(?:em)?\s+)?aplicadas?\s+(?:em|no\s+dia)\s+(\d{2}\/\d{2}\/\d{4})/i,
     /previstas?\s+para\s+sua\s+realiza[cç][aã]o\s+(?:em|no\s+dia)\s+(\d{2}\/\d{2}\/\d{4})/i,
-    /ser[aã]o\s+aplicadas?\s+(?:em|no\s+dia)\s+(\d{2}\/\d{2}\/\d{4})/i,
-    /aplicadas?\s+na\s+cidade\s+de\s+[^,]{1,40},\s+no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
-    /no\s+dia\s+(\d{2}\/\d{2}\/\d{4})[^\n]{0,60}prova/i,
-    /prova[^\n]{0,60}no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
-    // Removidas regex frouxas que confundiam data de inscrição com data de prova:
-    // - /aplicadas?\s+(?:na\s+data\s+...)?(\d{2}\/...)/ → muito ampla, pegava datas de inscrição
-    // - /(\d{2}\/...)[^.]{0,30}?prova/i → capturava qualquer data anterior à palavra "prova"
-    /data\s+prov[aá]vel\s+(?:da\s+prova\s+)?[:\-]?\s*(\d{2}\/\d{2}\/\d{4})/i,
-    /provas?[.\s\-]{2,}(\d{2}\/\d{2}\/\d{4})/i,
-    /provas?\s*:\s*(\d{2}\/\d{2}\/\d{4})/i,
+    /aplica[cç][aã]o\s+prevista\s+para\s+o\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?\s+objetivas?\s+(?:est[aã]o\s+)?marcadas?\s+para\s+o\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
   ];
-  for (const re of provaRe) {
+  for (const re of provaReConfiavel) {
     const m = textoNorm.match(re);
-    if (!m?.[1] || !dataValida(m[1])) continue;
-    // Validação extra: data de prova deve ser POSTERIOR ao encerramento das inscrições
-    if (tsInscricaoAte > 0) {
-      const [dp, mp, yp] = m[1].split("/").map(Number);
-      const tsProva = new Date(yp, mp - 1, dp).getTime();
-      if (tsProva <= tsInscricaoAte) continue; // data muito cedo — provavelmente é inscrição
+    if (m?.[1] && dataValida(m[1])) { out.dataProva = m[1]; break; }
+  }
+
+  // Se não encontrou nas confiáveis, tenta regex menos específicas com validação de data
+  if (out.dataProva === "-") {
+    const provaReFallback = [
+      /ser[aã]o\s+aplicadas?\s+(?:em|no\s+dia)\s+(\d{2}\/\d{2}\/\d{4})/i,
+      /aplicadas?\s+na\s+cidade\s+de\s+[^,]{1,40},\s+no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
+      /no\s+dia\s+(\d{2}\/\d{2}\/\d{4})[^\n]{0,60}prova/i,
+      /prova[^\n]{0,60}no\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
+      /data\s+prov[aá]vel\s+(?:da\s+prova\s+)?[:\-]?\s*(\d{2}\/\d{2}\/\d{4})/i,
+      /provas?[.\s\-]{2,}(\d{2}\/\d{2}\/\d{4})/i,
+      /provas?\s*:\s*(\d{2}\/\d{2}\/\d{4})/i,
+    ];
+    for (const re of provaReFallback) {
+      const m = textoNorm.match(re);
+      if (!m?.[1] || !dataValida(m[1])) continue;
+      // Validação extra: data de prova deve ser POSTERIOR ao encerramento das inscrições
+      if (tsInscricaoAte > 0) {
+        const [dp, mp, yp] = m[1].split("/").map(Number);
+        const tsProva = new Date(yp, mp - 1, dp).getTime();
+        if (tsProva <= tsInscricaoAte) continue;
+      }
+      out.dataProva = m[1];
+      break;
     }
-    out.dataProva = m[1];
-    break;
   }
 
   // Data do resultado — também usa textoNorm (datas por extenso convertidas)
