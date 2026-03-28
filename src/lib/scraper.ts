@@ -659,6 +659,7 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
 
   // ── Converte datas por extenso para DD/MM/AAAA ──────────────────────────────
   // Ex: "17 de maio de 2026" → "17/05/2026"
+  // Ex: "24 DE MAIO DE 2026" → "24/05/2026" (editais em caixa alta)
   const MESES: Record<string, string> = {
     janeiro:"01", fevereiro:"02", março:"03", marco:"03",
     abril:"04", maio:"05", junho:"06", julho:"07",
@@ -672,9 +673,10 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
       /(\d{1,2})[º°o]\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})/gi,
       (_, d, m, y) => d.padStart(2,"0") + "/" + m.padStart(2,"0") + "/" + y
     );
-    // 2. Por extenso: "17 de maio de 2026" → "17/05/2026"
+    // 2. Por extenso (minúsculo ou MAIÚSCULO): "17 de maio de 2026" ou "24 DE MAIO DE 2026"
+    // Fix: o charset original [a-záéíóúâêîôûãõç] não pegava letras maiúsculas acentuadas
     r = r.replace(
-      /(\d{1,2})\s+de\s+([a-záéíóúâêîôûãõç]+)\s+de\s+(\d{4})/gi,
+      /(\d{1,2})\s+de\s+([a-záéíóúâêîôûãõçA-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ]+)\s+de\s+(\d{4})/gi,
       (orig, d, mes, y) => {
         const m = MESES[mes.toLowerCase()];
         return m ? d.padStart(2, "0") + "/" + m + "/" + y : orig;
@@ -975,8 +977,24 @@ export async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> 
       return c.length > 1 && c.length < 100 && !/^v[aá]rios\s+cargos$/i.test(c) ? c : "";
     })();
 
-    // Cargo — prioridade: 1) extraído da linha de vagas, 2) do título
+    // Cargo — prioridade: 1) extraído da linha de vagas, 2) do título, 3) busca no bloco
     let cargo = cargoNaLinha || cargoDoTitle || "Vários Cargos";
+
+    // Se ainda "Vários Cargos", tenta encontrar cargo contábil direto no bloco de texto
+    if (cargo === "Vários Cargos") {
+      for (const kw of CARGO_CONTABIL_KW) {
+        // Busca a keyword no bloco e extrai o trecho como nome do cargo
+        const re = new RegExp(`((?:[A-ZÁÉÍÓÚ][a-záéíóúâêîôûãõç]+ ?){1,4}${kw.replace(/\s+/g,"\\s+")}(?:\\s+[a-záéíóúâêîôûãõç]+){0,3})`, "i");
+        const m = blocoTexto.match(re) || textoCompleto.substring(Math.max(0, idxOrgao * 5 - 200), idxOrgao * 5 + 500).match(re);
+        if (m?.[1]) {
+          const candidato = m[1].trim();
+          if (candidato.length >= 4 && candidato.length <= 60) {
+            cargo = normalizarNomeCargo(candidato);
+            break;
+          }
+        }
+      }
+    }
 
     // Nível
     const nivelMatch = blocoTexto.match(
