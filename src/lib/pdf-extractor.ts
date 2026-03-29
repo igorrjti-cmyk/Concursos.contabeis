@@ -298,18 +298,15 @@ function extrairCronograma(textoNorm: string): { dataProva: string; dataResultad
   const secao = idx !== -1 ? textoNorm.substring(idx, idx + 3000) : textoNorm;
 
   const provaPatterns = [
-    // Padrão exato do edital da Ápice: "Aplicação das provas escritas objetivas. 24/05/2026"
-    /aplica[cç][aã]o\s+das?\s+provas?\s+escritas?\s+objetivas?\.?\s*(\d{2}\/\d{2}\/\d{4})/i,
-    /aplica[cç][aã]o\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
-    /provas?\s+escritas?\s+objetivas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
-    /provas?\s+objetivas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
-    /realiza[cç][aã]o\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
-    /data\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
-    // Tabela sem separador: "Aplicação das Provas31/03/2026"
-    /aplica[cç][aã]o\s+das?\s+provas?(\d{2}\/\d{2}\/\d{4})/i,
-    /provas?\s+objetivas?(\d{2}\/\d{2}\/\d{4})/i,
-    /realiza[cç][aã]o\s+das?\s+provas?(\d{2}\/\d{2}\/\d{4})/i,
-    // Linha com somente data após menção de prova
+    // Padrão robusto: captura data DEPOIS da palavra-chave (ignora datas anteriores)
+    // Cobre: "Aplicação das provas escritas objetivas. 24/05/2026"
+    //        "07/05/2026 Aplicação das provas escritas objetivas. 24/05/2026"
+    /aplica[cç][aã]o\s+das?\s+provas?\s+escritas?\s+objetivas?[^0-9]{0,30}(\d{2}\/\d{2}\/\d{4})/i,
+    /aplica[cç][aã]o\s+das?\s+provas?[^0-9]{0,30}(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?\s+escritas?\s+objetivas?[^0-9]{0,30}(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?\s+objetivas?[^0-9]{0,30}(\d{2}\/\d{2}\/\d{4})/i,
+    /realiza[cç][aã]o\s+das?\s+provas?[^0-9]{0,30}(\d{2}\/\d{2}\/\d{4})/i,
+    /data\s+das?\s+provas?[^0-9]{0,30}(\d{2}\/\d{2}\/\d{4})/i,
     /(?:^|\n)[^\n]*prova[^\n]*(\d{2}\/\d{2}\/\d{4})/i,
   ];
   for (const re of provaPatterns) {
@@ -335,9 +332,10 @@ function extrairCronograma(textoNorm: string): { dataProva: string; dataResultad
 
 function extrairDataProvaFallback(textoNorm: string): string {
   const padroes = [
-    // Padrão exato: "Aplicação das provas escritas objetivas. 24/05/2026"
-    /aplica[cç][aã]o\s+das?\s+provas?\s+escritas?\s+objetivas?\.?\s*(\d{2}\/\d{2}\/\d{4})/i,
-    /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
+    // Padrão robusto: captura data DEPOIS da palavra-chave com [^0-9]{0,30}
+    /aplica[cç][aã]o\s+das?\s+provas?\s+escritas?\s+objetivas?[^0-9]{0,30}(\d{2}\/\d{2}\/\d{4})/i,
+    /aplica[cç][aã]o\s+das?\s+provas?[^0-9]{0,30}(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?\s+escritas?\s+objetivas?[^0-9]{0,30}(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+de\s+realiza[cç][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
     /provas?\s+(?:objetivas?|escritas?)\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
     /previstas?\s+para\s+(?:ser(?:em)?\s+)?aplicadas?\s+(?:em|no\s+dia)\s+(\d{2}\/\d{2}\/\d{4})/i,
