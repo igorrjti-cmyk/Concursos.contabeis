@@ -294,11 +294,14 @@ function extrairCronograma(textoNorm: string): { dataProva: string; dataResultad
 
   // Aceita variações: "Cronograma do Concurso", "Cronograma Geral", "Cronograma:" etc.
   const idx = textoNorm.search(/cronograma(?:\s+(?:do\s+concurso|geral|de\s+atividades))?\s*[:\-]?/i);
-  if (idx === -1) return { dataProva, dataResultado };
-  const secao = textoNorm.substring(idx, idx + 3000);
+  // Se não encontrou seção de cronograma, usa texto completo (PDFs sem quebra de linha)
+  const secao = idx !== -1 ? textoNorm.substring(idx, idx + 3000) : textoNorm;
 
   const provaPatterns = [
+    // Padrão exato do edital da Ápice: "Aplicação das provas escritas objetivas. 24/05/2026"
+    /aplica[cç][aã]o\s+das?\s+provas?\s+escritas?\s+objetivas?\.?\s*(\d{2}\/\d{2}\/\d{4})/i,
     /aplica[cç][aã]o\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
+    /provas?\s+escritas?\s+objetivas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
     /provas?\s+objetivas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
     /realiza[cç][aã]o\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+das?\s+provas?[.\s\-]*(\d{2}\/\d{2}\/\d{4})/i,
@@ -332,6 +335,8 @@ function extrairCronograma(textoNorm: string): { dataProva: string; dataResultad
 
 function extrairDataProvaFallback(textoNorm: string): string {
   const padroes = [
+    // Padrão exato: "Aplicação das provas escritas objetivas. 24/05/2026"
+    /aplica[cç][aã]o\s+das?\s+provas?\s+escritas?\s+objetivas?\.?\s*(\d{2}\/\d{2}\/\d{4})/i,
     /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+de\s+realiza[cç][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
     /provas?\s+(?:objetivas?|escritas?)\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
@@ -424,6 +429,21 @@ function extrairDataResultadoFallback(textoNorm: string, dataProva: string): str
 
 function extrairCargos(texto: string): string[] {
   const cargos = new Set<string>();
+
+  // Estratégia direta: busca por menções explícitas de cargos contábeis no texto
+  const mencoesDiretas: [RegExp, string][] = [
+    [/\bFISCAL\s+DE\s+TRIBUTOS\b/gi, "Fiscal de Tributos"],
+    [/\bCONTADOR(?:A)?\b/gi, "Contador"],
+    [/\bT[EÉ]CNICO\s+EM\s+CONTABILIDADE\b/gi, "Técnico em Contabilidade"],
+    [/\bAUDITOR\s+FISCAL\b/gi, "Auditor Fiscal"],
+    [/\bAUDITOR\s+INTERNO\b/gi, "Auditor Interno"],
+    [/\bANALISTA\s+CONT[AÁ]BIL\b/gi, "Analista Contábil"],
+  ];
+  for (const [re, nome] of mencoesDiretas) {
+    if (re.test(texto)) cargos.add(nome);
+  }
+  if (cargos.size > 0) return Array.from(cargos).slice(0, 8);
+
   const linhas = texto.split(/\n/).map(l => l.trim()).filter(Boolean);
   for (const linha of linhas) {
     if (!KW_CONTABIL.some(kw => linha.toLowerCase().includes(kw))) continue;
