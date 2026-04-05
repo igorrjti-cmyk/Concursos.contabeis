@@ -203,10 +203,18 @@ export default function CalendarioPage() {
         .dia-cell.selecionado { background: rgba(0,200,150,.12) !important; }
         @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
         .evento-item { animation: fadeUp .25s ease both; }
+        input, select { font-size: max(12px,16px) }
+        @media(max-width:700px){
+          .calendario-grid { grid-template-columns: 1fr !important; max-height: unset !important; }
+          .calendario-grid > div:last-child { border-left: none !important; border-top: 1px solid rgba(255,255,255,.06); max-height: 400px; overflow-y: auto; }
+          .cal-header { flex-direction: column !important; align-items: flex-start !important; gap: 12px !important; padding: 16px 16px 14px !important; }
+          .cal-header > div:last-child { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+          .cal-header > div:last-child > * { flex: 1; text-align: center; }
+        }
       `}</style>
 
       {/* Header */}
-      <div style={{ padding: "28px 32px 20px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div className="cal-header" style={{ padding: "28px 32px 20px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 900, background: "linear-gradient(90deg,#00C896,#00E5A8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
             📅 Calendário de Publicações
@@ -284,7 +292,8 @@ export default function CalendarioPage() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 0, maxHeight: "calc(100vh - 89px)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 0, maxHeight: "calc(100vh - 89px)" }}
+        className="calendario-grid">
 
         {/* CALENDÁRIO */}
         <div style={{ padding: "24px 28px", overflowY: "auto" }}>

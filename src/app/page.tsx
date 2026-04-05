@@ -780,7 +780,7 @@ function HomeContent() {
 
   // ── Toast de notificação ──────────────────────────────────────────────────
   const ToastUI = toast && (
-    <div style={{
+    <div className="toast-ui" style={{
       position: "fixed", bottom: 32, right: 32, zIndex: 9999,
       background: toast.tipo === "ok" ? "rgba(0,200,150,0.95)" : toast.tipo === "erro" ? "rgba(255,75,75,0.95)" : "rgba(99,102,241,0.95)",
       color: "#fff", padding: "14px 24px", borderRadius: 12,
@@ -805,7 +805,7 @@ function HomeContent() {
       <div style={{
         background: "#0D1B35", border: "1px solid rgba(0,200,150,0.2)", borderRadius: 20,
         padding: 32, width: 400, fontFamily: "'Sora',sans-serif",
-      }}>
+      }} className="agendar-modal">
         <h3 style={{ color: "#00C896", margin: "0 0 8px", fontSize: 18 }}>⏰ Agendar publicação</h3>
         <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, margin: "0 0 20px" }}>
           {agendarModal.modo === "feed" ? "📷 Feed" : agendarModal.modo === "stories" ? "📱 Stories" : "📲 Feed + Stories"} · {agendarModal.concurso.cargo}
@@ -885,20 +885,99 @@ function HomeContent() {
 
       <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800;900&display=swap" rel="stylesheet" />
       <style>{`
-        @keyframes spin  { to { transform: rotate(360deg) } }
-        @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.7 } }
+        @keyframes spin    { to { transform: rotate(360deg) } }
+        @keyframes pulse   { 0%,100% { opacity:1 } 50% { opacity:.7 } }
+        @keyframes slideIn { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
         * { box-sizing: border-box }
+        html { -webkit-text-size-adjust: 100% }
         ::-webkit-scrollbar { width:5px; height:5px }
         ::-webkit-scrollbar-thumb { background:rgba(0,200,150,.25); border-radius:3px }
         button:hover:not(:disabled) { opacity: .85; }
+        input, select { font-size: max(12px,16px) }
+
+        /* ── Mobile breakpoint ───────────────────────────── */
         @media(max-width:640px){
-          .header-row{flex-direction:column!important;gap:10px!important;align-items:flex-start!important}
-          .stats-bar{flex-wrap:wrap!important}
-          .stat-item{flex:1 1 45%!important;min-width:120px!important}
-          .filters-row{flex-wrap:wrap!important;gap:6px!important}
-          .list-meta{flex-wrap:wrap!important}
-          .list-btns{flex-wrap:wrap!important}
-          .cards-wrap{justify-content:center!important}
+
+          /* Header */
+          .header-row {
+            flex-direction: column !important;
+            gap: 10px !important;
+            align-items: flex-start !important;
+            padding: 12px 14px !important;
+          }
+          .header-row > div:last-child {
+            width: 100%;
+            justify-content: flex-start !important;
+          }
+          .header-row button, .header-row a {
+            flex: 1;
+            justify-content: center;
+            text-align: center;
+          }
+
+          /* Stats bar — 2 por linha */
+          .stats-bar { flex-wrap: wrap !important }
+          .stats-bar > div {
+            flex: 1 1 45% !important;
+            min-width: 120px !important;
+            border-right: none !important;
+            border-bottom: 1px solid rgba(255,255,255,.06) !important;
+          }
+
+          /* Filtros — empilham */
+          .filters-row {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 8px !important;
+            padding: 10px 14px !important;
+          }
+          .filters-row input,
+          .filters-row select { width: 100% !important; min-width: unset !important; }
+          .filters-row > div { width: 100% !important; }
+          .filters-row > div select { width: 100% !important; }
+          .filters-status-row {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+          }
+          .filters-status-row button { flex: 1 !important; min-width: 100px !important; }
+          .formato-row { margin-left: 0 !important; width: 100% !important; }
+          .formato-row button { flex: 1 !important; }
+
+          /* Lista de concursos — botões de ação empilham */
+          .list-btns {
+            width: 100% !important;
+            flex-wrap: wrap !important;
+            gap: 5px !important;
+          }
+          .list-btns > *, .list-btns button, .list-btns a {
+            flex: 1 !important;
+            min-width: 80px !important;
+            text-align: center !important;
+            justify-content: center !important;
+          }
+
+          /* Cards Instagram — centralizados, largura máxima */
+          .cards-wrap { justify-content: center !important }
+          .cards-wrap > div { width: 100% !important; max-width: 390px !important; }
+
+          /* Main padding */
+          main { padding: 14px !important }
+
+          /* Modal de agendamento — largura total no mobile */
+          .agendar-modal { width: 92% !important; padding: 20px !important }
+
+          /* Toast — ocupa largura no mobile */
+          .toast-ui {
+            left: 14px !important;
+            right: 14px !important;
+            bottom: 14px !important;
+            max-width: unset !important;
+          }
+
+          /* Stats grid — 1 coluna */
+          .stats-grid-3 { grid-template-columns: 1fr !important }
+          .stats-grid-2 { grid-template-columns: 1fr !important }
         }
       `}</style>
 
@@ -1032,6 +1111,7 @@ function HomeContent() {
           />
 
           {/* Filtro status */}
+          <div className="filters-status-row" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {(["todos", "Inscricoes Abertas", "Aguardando Prova"] as FilterStatus[]).map(f => (
             <button key={f} onClick={() => setFilter(f)} style={{
               background: filter === f ? "rgba(0,200,150,.1)" : "transparent",
@@ -1044,6 +1124,7 @@ function HomeContent() {
               {f === "todos" ? "Todos" : f === "Inscricoes Abertas" ? "Inscrições Abertas" : f === "Aguardando Prova" ? "Aguardando Prova" : f}
             </button>
           ))}
+          </div>
 
           {/* Estado */}
           <select value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)} style={{
@@ -1101,7 +1182,7 @@ function HomeContent() {
 
           {/* Formato dos cards */}
           {tab === "cards" && (
-            <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+            <div className="formato-row" style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
               {([
                 ["feed",    "Feed 4:5 (1080×1350)"],
                 ["stories", "Stories 9:16 (download)"],
@@ -1514,7 +1595,7 @@ function HomeContent() {
             ) : (
               <>
                 {/* Cards de totais */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 28 }}>
+                <div className="stats-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 28 }}>
                   {[
                     { label: "Posts esta semana", value: stats.totalSemana, color: "#00C896" },
                     { label: "Posts este mês",    value: stats.totalMes,    color: "#A78BFA" },
@@ -1546,7 +1627,7 @@ function HomeContent() {
                   </div>
                 )}
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div className="stats-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                   {/* Top estados */}
                   {stats.topEstados.length > 0 && (
                     <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "20px" }}>

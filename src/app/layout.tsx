@@ -18,7 +18,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <body suppressHydrationWarning style={{ margin: 0, padding: 0, background: "#080F1E" }}>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+        <meta name="theme-color" content="#060E20" />
+      </head>
+      <body suppressHydrationWarning style={{ margin: 0, padding: 0, background: "#080F1E", overflowX: "hidden" }}>
         {children}
       </body>
     </html>
