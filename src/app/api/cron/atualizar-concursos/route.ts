@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
     (req.headers.get("x-forwarded-host")
       ? `https://${req.headers.get("x-forwarded-host")}`
-      : "https://concursos-contabeis.vercel.app");
+      : "https://concursoscontabeis.com.br");
 
   const inicio = Date.now();
   let totalAcumulado = 0;
