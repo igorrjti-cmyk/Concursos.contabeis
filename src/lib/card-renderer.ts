@@ -173,7 +173,7 @@ export async function renderCardCanvas(
   Y += 60;
 
   // ── Tags estado + nível ──────────────────────────────────────────────────
-  const tags = [`📍 ${c.estado}`, `🎓 ${c.nivel}`];
+  const tags = [`📍 ${(c as { cidade?: string }).cidade ? (c as { cidade?: string }).cidade + "/" : ""}${c.estado}`, `🎓 ${c.nivel}`];
   let tagX = PAD;
   for (const tag of tags) {
     ctx.font = `600 24px ${FONT}`;

@@ -9,6 +9,8 @@ export interface Favorito {
   cargo: string;
   orgao: string;
   estado: string;
+  cidade: string;
+  uf: string;
   nota: string | null;
   criado_em: string;
 }
@@ -31,7 +33,7 @@ export async function POST(req: Request) {
   if (!sb) return NextResponse.json({ ok: false, error: "Supabase não configurado" }, { status: 503 });
 
   const body = await req.json() as {
-    concurso_id: string; cargo: string; orgao: string; estado: string; nota?: string;
+    concurso_id: string; cargo: string; orgao: string; estado: string; cidade?: string; uf?: string; nota?: string;
   };
 
   // Upsert — se já favorito, atualiza nota
@@ -42,6 +44,8 @@ export async function POST(req: Request) {
       cargo:       body.cargo,
       orgao:       body.orgao,
       estado:      body.estado,
+      cidade:      body.cidade ?? "",
+      uf:          body.uf ?? body.estado,
       nota:        body.nota ?? null,
     }, { onConflict: "concurso_id" })
     .select()

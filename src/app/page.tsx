@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import InstagramCard from "@/components/InstagramCard";
 import { gerarLegenda } from "@/lib/legenda";
 import type { Concurso } from "@/lib/scraper";
+import { UF_NOMES } from "@/lib/scraper";
 import type { PostHistorico } from "@/app/api/historico/route";
 
 // Hook utilitário: retarda a atualização de um valor até o usuário parar de digitar
@@ -28,6 +29,8 @@ interface Favorito {
   cargo: string;
   orgao: string;
   estado: string;
+  cidade: string;
+  uf: string;
   nota: string | null;
   criado_em: string;
 }
@@ -548,7 +551,7 @@ function HomeContent() {
       await fetch("/api/favoritos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ concurso_id: c.id, cargo: c.cargo, orgao: c.orgao, estado: c.estado }),
+        body: JSON.stringify({ concurso_id: c.id, cargo: c.cargo, orgao: c.orgao, estado: c.estado, cidade: c.cidade || "", uf: c.uf || c.estado }),
       });
     }
     await fetchFavoritos();
@@ -588,7 +591,7 @@ function HomeContent() {
       }
       if (buscaDebounced.trim()) {
         const q = buscaDebounced.toLowerCase();
-        if (!c.cargo.toLowerCase().includes(q) && !c.orgao.toLowerCase().includes(q) && !c.estado.toLowerCase().includes(q)) return false;
+        if (!c.cargo.toLowerCase().includes(q) && !c.orgao.toLowerCase().includes(q) && !c.estado.toLowerCase().includes(q) && !(c.cidade || "").toLowerCase().includes(q) && !(c.uf || "").toLowerCase().includes(q)) return false;
       }
       return true;
     });
@@ -1132,7 +1135,7 @@ function HomeContent() {
             color: "rgba(255,255,255,.6)", borderRadius: 9, padding: "6px 10px",
             fontSize: 11, cursor: "pointer",
           }}>
-            {UFS.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+            {UFS.map(uf => <option key={uf} value={uf}>{uf === "Todos" ? "Todos" : uf + (UF_NOMES[uf] ? " — " + UF_NOMES[uf] : "")}</option>)}
           </select>
 
           {/* Nível */}
@@ -1277,7 +1280,7 @@ function HomeContent() {
                       </div>
                       <div style={{ color: "#00C896", fontSize: 12, marginTop: 2, fontWeight: 600 }}>{c.orgao}</div>
                       <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, marginTop: 1 }} className="list-meta">
-                        {c.estado} · {nivelDisplay(c.cargo, c.nivel)}{c.banca !== "-" ? " · " + c.banca : ""}
+                        {c.cidade ? c.cidade + "/" : ""}{c.estado}{c.uf && c.uf !== c.estado ? " · " + c.uf : ""} · {nivelDisplay(c.cargo, c.nivel)}{c.banca !== "-" ? " · " + c.banca : ""}
                       </div>
                       {/* Cargos contábeis inline quando há múltiplos */}
                       {c.cargosContabeis && c.cargosContabeis.length > 1 && (
@@ -1545,7 +1548,7 @@ function HomeContent() {
                       <span style={{ fontSize: 18 }}>⭐</span>
                       <div style={{ flex: 1 }}>
                         <div style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{f.cargo}</div>
-                        <div style={{ color: "#00C896", fontSize: 12, marginTop: 2 }}>{f.orgao} — {f.estado}</div>
+                        <div style={{ color: "#00C896", fontSize: 12, marginTop: 2 }}>{f.orgao} — {f.cidade ? f.cidade + "/" : ""}{f.estado}{f.uf && f.uf !== f.estado ? " · " + f.uf : ""}</div>
                         {c && (
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
                             <span style={{ background: "rgba(0,200,150,.08)", color: "#00C896", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 5 }}>{c.salario}</span>
@@ -1741,7 +1744,7 @@ function HomeContent() {
                             </div>
                             <div style={{ flex: 1 }}>
                               <div style={{ color: passada ? "rgba(255,255,255,.5)" : "#fff", fontWeight: 700, fontSize: 14 }} title={c.cargo}>{cargoDisplay(c.cargo)}</div>
-                              <div style={{ color: passada ? "rgba(0,200,150,.5)" : "#00C896", fontSize: 12, marginTop: 2 }}>{c.orgao} — {c.estado}</div>
+                              <div style={{ color: passada ? "rgba(0,200,150,.5)" : "#00C896", fontSize: 12, marginTop: 2 }}>{c.orgao} — {(c as Concurso & { cidade?: string }).cidade ? (c as Concurso & { cidade?: string }).cidade + "/" : ""}{c.estado}</div>
                               {c.banca !== "-" && <div style={{ color: "rgba(255,255,255,.3)", fontSize: 10, marginTop: 1 }}>{c.banca}</div>}
                             </div>
                             {!passada ? (

@@ -15,7 +15,9 @@ export interface Concurso {
   cargo: string;          // cargo principal (ex: "Contador")
   cargosContabeis: string[]; // todos os cargos contábeis encontrados no edital
   orgao: string;
-  estado: string;
+  estado: string;         // sigla da UF (ex: "SP")
+  cidade: string;         // cidade extraída do órgão ou título (ex: "São Paulo")
+  uf: string;             // nome completo do estado (ex: "São Paulo")
   vagas: string;
   salario: string;
   inscricao: string;
@@ -249,7 +251,87 @@ const AREAS_EXCLUIDAS_TITLE = [
   "arquiteto", "urbanista",
 ];
 
+// ─── Mapa UF → nome completo do estado ───────────────────────────────────────
+export const UF_NOMES: Record<string, string> = {
+  AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas",
+  BA: "Bahia", CE: "Ceará", DF: "Distrito Federal", ES: "Espírito Santo",
+  GO: "Goiás", MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul",
+  MG: "Minas Gerais", PA: "Pará", PB: "Paraíba", PR: "Paraná",
+  PE: "Pernambuco", PI: "Piauí", RJ: "Rio de Janeiro", RN: "Rio Grande do Norte",
+  RS: "Rio Grande do Sul", RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina",
+  SP: "São Paulo", SE: "Sergipe", TO: "Tocantins", Nacional: "Nacional",
+};
+
+/**
+ * Extrai a cidade a partir do nome do órgão ou do título da notícia.
+ *
+ * Estratégias (em ordem de prioridade):
+ *   1. Padrão " de CidadeNome" no órgão   → ex: "Câmara de São Paulo" → "São Paulo"
+ *   2. Padrão " de CidadeNome" no título   → ex: "Prefeitura de Campinas - SP" → "Campinas"
+ *   3. Padrão " do/da CidadeNome"          → ex: "Câmara Municipal do Rio" → "Rio"
+ *   4. Siglas de municípios conhecidos     → fallback para nome do órgão abreviado
+ *   5. "" (vazio) se não encontrado        → frontend exibe só a UF
+ */
+export function extrairCidade(orgao: string, title: string, uf: string): string {
+  const fontes = [orgao + " " + title];
+
+  // Padrão mais comum: "Prefeitura de Nome da Cidade" / "Câmara de Nome da Cidade"
+  // Limita o nome da cidade a até 5 palavras antes de hífen, vírgula, ponto ou fim
+  const reDe = /(?:prefeitura|câmara|camara|município|municipio|cidade|governo|secretaria|autarquia|fundação|fundacao|instituto|conselho|tribunal|saae|sanep|sabesp)\s+(?:municipal\s+)?(?:de|do|da|dos|das)\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ' ]{1,60}?)(?:\s*[-,.(\/]|$)/i;
+
+  for (const fonte of fontes) {
+    const m = fonte.match(reDe);
+    if (m?.[1]) {
+      let cidade = m[1].trim();
+      // Remove sufixos de UF colados: "Campinas SP", "São Paulo - SP"
+      cidade = cidade.replace(/\s+[-–]?\s*[A-Z]{2}$/, "").trim();
+      // Remove preposições soltas no final: "de", "do", "da"
+      cidade = cidade.replace(/\s+(de|do|da|dos|das)$/i, "").trim();
+      if (cidade.length >= 2 && cidade.length <= 60) return cidade;
+    }
+  }
+
+  // Padrão "Nome Cidade - UF" no title: "Câmara de Tamboara - PR abre..."
+  // Tenta capturar a cidade quando aparece antes do " - UF"
+  const reTitleUF = /\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ' ]{1,40}?)\s+-\s+[A-Z]{2}\s+/;
+  const mTitle = title.match(reTitleUF);
+  if (mTitle?.[1]) {
+    const candidata = mTitle[1].trim();
+    // Rejeita palavras genéricas que não são cidades
+    const genericas = new Set(["abre", "publica", "edital", "concurso", "para", "cargo", "vagas"]);
+    if (!genericas.has(candidata.toLowerCase()) && candidata.length >= 2) {
+      return candidata;
+    }
+  }
+
+  // Órgãos estaduais/federais não têm cidade — retorna capital do estado como referência
+  const CAPITAIS: Record<string, string> = {
+    AC: "Rio Branco", AL: "Maceió", AP: "Macapá", AM: "Manaus",
+    BA: "Salvador", CE: "Fortaleza", DF: "Brasília", ES: "Vitória",
+    GO: "Goiânia", MA: "São Luís", MT: "Cuiabá", MS: "Campo Grande",
+    MG: "Belo Horizonte", PA: "Belém", PB: "João Pessoa", PR: "Curitiba",
+    PE: "Recife", PI: "Teresina", RJ: "Rio de Janeiro", RN: "Natal",
+    RS: "Porto Alegre", RO: "Porto Velho", RR: "Boa Vista", SC: "Florianópolis",
+    SP: "São Paulo", SE: "Aracaju", TO: "Palmas",
+  };
+
+  // Órgãos federais / autarquias nacionais — não atribuir cidade
+  const orgaoLow = orgao.toLowerCase();
+  const ehFederal =
+    orgaoLow.includes("federal") ||
+    orgaoLow.includes("receita") ||
+    orgaoLow.includes("tribunal") ||
+    orgaoLow.includes("ministério") ||
+    orgaoLow.includes("ministerio") ||
+    uf === "Nacional";
+  if (ehFederal) return "";
+
+  // Retorna string vazia — frontend mostrará apenas a UF
+  return "";
+}
+
 // Cargos não-contábeis que aparecem misturados em editais de "Vários Cargos"
+
 // Quando o cargo extraído for um desses, descartamos — só ficam os contábeis
 const CARGOS_NAO_CONTABEIS = [
   // jurídico
@@ -1047,9 +1129,13 @@ export async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> 
     const passaParaDetalhe = (nivelSuperior && cargoGenerico) || ehVariosCargos || titleTemContabil;
     if (!ehConcursoContabil(cargo, title, orgao) && !passaParaDetalhe) continue;
 
+    const cidadeExtraida = extrairCidade(orgao, title, ufDoTitle);
     items.push({
       id:            slugify(cargo + "-" + orgao),
-      orgao, estado: ufDoTitle, vagas: vagasStr, salario: salarioStr,
+      orgao, estado: ufDoTitle,
+      cidade: cidadeExtraida,
+      uf: UF_NOMES[ufDoTitle] ?? ufDoTitle,
+      vagas: vagasStr, salario: salarioStr,
       cargo, nivel: detectNivel(nivelRaw, cargo), inscricao, inscricaoAte,
       diasRestantes: calcDiasRestantes(inscricaoAte),
       linkNoticia: href, linkEdital: href, banca: "-",
@@ -1412,6 +1498,8 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
           cargosContabeis: [cd.cargo],
           orgao:           item.orgao || "-",
           estado:          item.estado || "Nacional",
+          cidade:          item.cidade || "",
+          uf:              item.uf || UF_NOMES[item.estado || ""] || (item.estado || "Nacional"),
           vagas:           cd.vagas,
           salario:         cd.salario,
           inscricao:       item.inscricao || "-",
@@ -1438,6 +1526,8 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
         : cargoFinal !== "Vários Cargos" ? [cargoFinal] : [],
       orgao:          item.orgao || "-",
       estado:         item.estado || "Nacional",
+      cidade:         item.cidade || "",
+      uf:             item.uf || UF_NOMES[item.estado || ""] || (item.estado || "Nacional"),
       vagas:          item.vagas || "-",
       salario:        item.salario || "A consultar",
       inscricao:      item.inscricao || "-",
@@ -1491,6 +1581,8 @@ export function getFallbackData(): Concurso[] {
       cargosContabeis: ["Contador"],
       orgao: "Câmara de Tamboara",
       estado: "PR",
+      cidade: "Tamboara",
+      uf: "Paraná",
       vagas: "Cadastro Reserva",
       salario: "R$ 5.864,79",
       inscricao: "Ver edital",
@@ -1507,6 +1599,8 @@ export function getFallbackData(): Concurso[] {
       cargosContabeis: ["Contador"],
       orgao: "Câmara de Sabarà",
       estado: "MG",
+      cidade: "Sabarà",
+      uf: "Minas Gerais",
       vagas: "10 vagas",
       salario: "R$ 5.409,87",
       inscricao: "25/05/2026 a 25/06/2026",
@@ -1523,6 +1617,8 @@ export function getFallbackData(): Concurso[] {
       cargosContabeis: ["Auditor Fiscal"],
       orgao: "SEFAZ Goiás",
       estado: "GO",
+      cidade: "Goiânia",
+      uf: "Goiás",
       vagas: "50 vagas",
       salario: "R$ 21.000,00",
       inscricao: "Ver edital",

@@ -122,7 +122,7 @@ export function gerarLegenda(c: Concurso): string {
     cabecalho +
     "\n\n" +
     `📍 Órgão: ${c.orgao}\n` +
-    `🗺 Estado: ${c.estado}\n` +
+    `🗺 Estado: ${c.cidade ? c.cidade + "/" : ""}${c.estado}\n` +
     `🎓 Nível: ${c.nivel}\n` +
     `🎯 Vagas: ${c.vagas}\n` +
     `💰 Salário: ${c.salario}\n` +

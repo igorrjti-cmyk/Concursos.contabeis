@@ -107,3 +107,18 @@ CREATE POLICY "service role full access agendamentos"
   ON agendamentos_posts FOR ALL
   USING (auth.role() = 'service_role')
   WITH CHECK (auth.role() = 'service_role');
+
+-- ── Colunas cidade e uf (adicionadas para filtro e exibição) ─────────────────
+-- Execute após o setup inicial se a tabela já existia
+ALTER TABLE historico_posts ADD COLUMN IF NOT EXISTS cidade TEXT NOT NULL DEFAULT '';
+ALTER TABLE historico_posts ADD COLUMN IF NOT EXISTS uf     TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE favoritos ADD COLUMN IF NOT EXISTS cidade TEXT NOT NULL DEFAULT '';
+ALTER TABLE favoritos ADD COLUMN IF NOT EXISTS uf     TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE agendamentos_posts ADD COLUMN IF NOT EXISTS cidade TEXT NOT NULL DEFAULT '';
+ALTER TABLE agendamentos_posts ADD COLUMN IF NOT EXISTS uf     TEXT NOT NULL DEFAULT '';
+
+-- Índice para filtro por UF/cidade
+CREATE INDEX IF NOT EXISTS idx_historico_estado ON historico_posts (estado);
+CREATE INDEX IF NOT EXISTS idx_favoritos_estado  ON favoritos (estado);

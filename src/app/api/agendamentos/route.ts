@@ -26,6 +26,8 @@ export async function POST(req: Request) {
       cargo:          body.cargo,
       orgao:          body.orgao,
       estado:         body.estado,
+      cidade:         body.cidade ?? "",
+      uf:             body.uf ?? body.estado,
       modo:           body.modo,
       agendado_para:  body.agendado_para,
       feed_base64:    body.feed_base64    ?? null,

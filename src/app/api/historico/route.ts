@@ -10,6 +10,8 @@ export interface PostHistorico {
   cargo: string;
   orgao: string;
   estado: string;
+  cidade: string;
+  uf: string;
   posted_at: string; // ISO
 }
 
