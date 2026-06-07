@@ -753,7 +753,7 @@ function HomeContent() {
         throw new Error("Extensão não encontrada. Instale a extensão Concursos Contábeis no Chrome.");
       }
 
-      const EXT_ID = "phmnhackebfpjcjpdopobdalmaolbglk";
+      const EXT_ID = "poohgmlikfkjkpepmfpdeiphejhdibij";
 
       await new Promise<void>((resolve, reject) => {
         chrome.runtime.sendMessage(
