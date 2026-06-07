@@ -273,60 +273,51 @@ export const UF_NOMES: Record<string, string> = {
  *   5. "" (vazio) se não encontrado        → frontend exibe só a UF
  */
 export function extrairCidade(orgao: string, title: string, uf: string): string {
-  const fontes = [orgao + " " + title];
-
-  // Padrão mais comum: "Prefeitura de Nome da Cidade" / "Câmara de Nome da Cidade"
-  // Limita o nome da cidade a até 5 palavras antes de hífen, vírgula, ponto ou fim
-  const reDe = /(?:prefeitura|câmara|camara|município|municipio|cidade|governo|secretaria|autarquia|fundação|fundacao|instituto|conselho|tribunal|saae|sanep|sabesp)\s+(?:municipal\s+)?(?:de|do|da|dos|das)\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ' ]{1,60}?)(?:\s*[-,.(\/]|$)/i;
-
-  for (const fonte of fontes) {
-    const m = fonte.match(reDe);
-    if (m?.[1]) {
-      let cidade = m[1].trim();
-      // Remove sufixos de UF colados: "Campinas SP", "São Paulo - SP"
-      cidade = cidade.replace(/\s+[-–]?\s*[A-Z]{2}$/, "").trim();
-      // Remove preposições soltas no final: "de", "do", "da"
-      cidade = cidade.replace(/\s+(de|do|da|dos|das)$/i, "").trim();
-      if (cidade.length >= 2 && cidade.length <= 60) return cidade;
-    }
-  }
-
-  // Padrão "Nome Cidade - UF" no title: "Câmara de Tamboara - PR abre..."
-  // Tenta capturar a cidade quando aparece antes do " - UF"
-  const reTitleUF = /\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-Za-záéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ' ]{1,40}?)\s+-\s+[A-Z]{2}\s+/;
-  const mTitle = title.match(reTitleUF);
-  if (mTitle?.[1]) {
-    const candidata = mTitle[1].trim();
-    // Rejeita palavras genéricas que não são cidades
-    const genericas = new Set(["abre", "publica", "edital", "concurso", "para", "cargo", "vagas"]);
-    if (!genericas.has(candidata.toLowerCase()) && candidata.length >= 2) {
-      return candidata;
-    }
-  }
-
-  // Órgãos estaduais/federais não têm cidade — retorna capital do estado como referência
-  const CAPITAIS: Record<string, string> = {
-    AC: "Rio Branco", AL: "Maceió", AP: "Macapá", AM: "Manaus",
-    BA: "Salvador", CE: "Fortaleza", DF: "Brasília", ES: "Vitória",
-    GO: "Goiânia", MA: "São Luís", MT: "Cuiabá", MS: "Campo Grande",
-    MG: "Belo Horizonte", PA: "Belém", PB: "João Pessoa", PR: "Curitiba",
-    PE: "Recife", PI: "Teresina", RJ: "Rio de Janeiro", RN: "Natal",
-    RS: "Porto Alegre", RO: "Porto Velho", RR: "Boa Vista", SC: "Florianópolis",
-    SP: "São Paulo", SE: "Aracaju", TO: "Palmas",
-  };
-
-  // Órgãos federais / autarquias nacionais — não atribuir cidade
+  // Órgãos federais / nacionais — sem cidade específica
   const orgaoLow = orgao.toLowerCase();
-  const ehFederal =
-    orgaoLow.includes("federal") ||
-    orgaoLow.includes("receita") ||
-    orgaoLow.includes("tribunal") ||
+  if (
+    orgaoLow.includes("receita federal") ||
+    orgaoLow.includes("tribunal federal") ||
     orgaoLow.includes("ministério") ||
     orgaoLow.includes("ministerio") ||
-    uf === "Nacional";
-  if (ehFederal) return "";
+    uf === "Nacional"
+  ) return "";
 
-  // Retorna string vazia — frontend mostrará apenas a UF
+  // ── Estratégia 1: "Órgão de/do/da CIDADE" ────────────────────────────────
+  // Usa charset amplo para capturar acentos raros como "à" em "Sabarà"
+  // Exemplos: "Câmara de Mara Rosa", "SAAE de Lençóis Paulista", "Câmara de Sabarà"
+  const reOrgao = /(?:prefeitura|c[aâ]mara(?:\s+municipal)?|município|municipio|saae|sanep|sabesp|crc-?\w*|sefaz|sesmet|autarquia|fundação|fundacao|conselho|instituto)\s+(?:municipal\s+)?(?:de|do|da|dos|das)\s+([^\s][^,.(\-–]{1,50}?)(?:\s*[-–,.(]|\s+-\s+[A-Z]{2}\b|$)/i;
+
+  for (const fonte of [orgao, title]) {
+    const m = fonte.match(reOrgao);
+    if (m?.[1]) {
+      let cidade = m[1].trim();
+      // Remove " - UF" ou " UF" colado no final
+      cidade = cidade.replace(/\s*[-–]?\s*[A-Z]{2}$/, "").trim();
+      // Remove preposições residuais
+      cidade = cidade.replace(/\s+(de|do|da|dos|das)$/i, "").trim();
+      if (cidade.length >= 2 && cidade.length <= 50) return cidade;
+    }
+  }
+
+  // ── Estratégia 2: padrão de título PCI "... de CIDADE - UF ..." ──────────
+  // Ex: "Câmara de Mara Rosa - GO abre concurso"
+  // Ex: "Prefeitura de Conselheiro Pena - MG abre"
+  const rePCI = /\bde\s+([^\s][^,.(]{1,50}?)\s+-\s+[A-Z]{2}\b/i;
+  const mPCI = title.match(rePCI);
+  if (mPCI?.[1]) {
+    const candidata = mPCI[1].trim();
+    const genericas = new Set([
+      "abre", "publica", "edital", "concurso", "para", "cargo", "vagas",
+      "prefeitura", "camara", "câmara", "governo", "secretaria", "instituto",
+      "fundacao", "fundação",
+    ]);
+    if (!genericas.has(candidata.toLowerCase()) && candidata.length >= 2 && candidata.length <= 50) {
+      // Remove UF colado no final se sobrou
+      return candidata.replace(/\s*[-–]?\s*[A-Z]{2}$/, "").trim();
+    }
+  }
+
   return "";
 }
 

@@ -1,5 +1,5 @@
 // src/lib/legenda.ts
-import { Concurso, statusDisplay } from "./scraper";
+import { Concurso, statusDisplay, UF_NOMES } from "./scraper";
 
 const EMOJI_BANCA: Record<string, string> = {
   CESPE: "⚡", CEBRASPE: "⚡", FGV: "🏛", FCC: "📘",
@@ -60,27 +60,59 @@ function chamadaParaAcao(c: Concurso): string {
   return "Boa oportunidade para quem tem formação em Ciências Contábeis. Compartilhe com quem precisa!";
 }
 
+/** Normaliza texto para hashtag: remove acentos, espaços e caracteres especiais */
+function toHashtag(texto: string): string {
+  return "#" + texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")   // remove diacríticos
+    .replace(/[^a-z0-9]/g, "");           // remove tudo que não é letra/número
+}
+
 function gerarHashtags(c: Concurso): string {
   const tags = new Set<string>([
     "#concursospublicos", "#contabilidade", "#contador", "#contadora",
     "#cienciascontabeis", "#concursocontabilidade",
   ]);
 
+  // ── Cargo ─────────────────────────────────────────────────────────────────
   const cargo = c.cargo.toLowerCase();
   if (cargo.includes("tecnico") || cargo.includes("técnico")) tags.add("#tecnicoemcontabilidade");
   if (cargo.includes("auditor"))   tags.add("#auditorfiscal");
   if (cargo.includes("fiscal"))    tags.add("#fiscaldetributos");
   if (cargo.includes("analista"))  tags.add("#analistacontabil");
+  if (cargo.includes("perito"))    tags.add("#peritocontabil");
+  if (cargo.includes("controller")) tags.add("#controller");
   if (cargo.includes("contador"))  tags.add("#contador");
 
+  // ── Banca ─────────────────────────────────────────────────────────────────
   if (c.banca !== "-") tags.add("#" + c.banca.toLowerCase().replace(/[^a-z0-9]/g, ""));
+
+  // ── Estado: hashtag genérica de concurso + hashtag do nome do estado ──────
   if (ESTADO_HASHTAG[c.estado]) tags.add(ESTADO_HASHTAG[c.estado]);
 
+  // Ex: estado = "GO" → "#goias", "#concursogoias"
+  const nomeEstado = UF_NOMES[c.estado];
+  if (nomeEstado && c.estado !== "Nacional") {
+    tags.add(toHashtag(nomeEstado));                    // #goias #saopaulo etc
+    tags.add(toHashtag("concurso " + nomeEstado));      // #concursogoias etc
+  }
+
+  // ── Cidade: hashtag de concurso na cidade + apenas nome da cidade ─────────
+  if (c.cidade && c.cidade.trim().length >= 2) {
+    tags.add(toHashtag(c.cidade));                      // #mararosa #saopaulo etc
+    tags.add(toHashtag("concurso " + c.cidade));        // #concursomararosa etc
+    // Combina cidade + UF para maior alcance local: #concursomararosago
+    tags.add(toHashtag("concurso " + c.cidade + c.estado)); // #concursomararosago
+  }
+
+  // ── Categoria do órgão ────────────────────────────────────────────────────
   const cat = categoriaPost(c);
   if (cat === "federal")   tags.add("#concursofederal");
   if (cat === "estadual")  tags.add("#concursoestadual");
   if (cat === "municipal") tags.add("#concursomunicipal");
 
+  // ── Vagas e oportunidade ──────────────────────────────────────────────────
   const ano = new Date().getFullYear();
   tags.add("#aprovado");
   tags.add("#servidorpublico");
