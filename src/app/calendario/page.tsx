@@ -118,7 +118,7 @@ export default function CalendarioPage() {
         showToast("❌ Extensão não encontrada. Instale a extensão no Chrome.");
         return;
       }
-      const EXT_ID = "poohgmlikfkjkpepmfpdeiphejhdibij";
+      const EXT_ID = "phmnhackebfpjcjpdopobdalmaolbglk";
 
       // Busca as imagens do agendamento do banco
       const res = await fetch(`/api/agendamentos/${ag.id}/imagens`);
