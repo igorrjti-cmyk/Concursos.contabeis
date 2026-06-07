@@ -121,6 +121,11 @@ function gerarHashtags(c: Concurso): string {
   tags.add("#vagas" + ano);
   tags.add("#oportunidade");
 
+  // ── Branding fixo ─────────────────────────────────────────────────────────
+  tags.add("#debitoecredito");      // marca do site
+  tags.add("#simuladorcontabil");   // volume de busca em estudos contábeis
+  tags.add("#estudocontabil");      // complementar
+
   return Array.from(tags).join(" ");
 }
 
