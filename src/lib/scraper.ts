@@ -283,10 +283,13 @@ export function extrairCidade(orgao: string, title: string, uf: string): string 
     uf === "Nacional"
   ) return "";
 
-  // ── Estratégia 1: "Órgão de/do/da CIDADE" ────────────────────────────────
-  // Usa charset amplo para capturar acentos raros como "à" em "Sabarà"
-  // Exemplos: "Câmara de Mara Rosa", "SAAE de Lençóis Paulista", "Câmara de Sabarà"
-  const reOrgao = /(?:prefeitura|c[aâ]mara(?:\s+municipal)?|município|municipio|saae|sanep|sabesp|crc-?\w*|sefaz|sesmet|autarquia|fundação|fundacao|conselho|instituto)\s+(?:municipal\s+)?(?:de|do|da|dos|das)\s+([^\s][^,.(\-–]{1,50}?)(?:\s*[-–,.(]|\s+-\s+[A-Z]{2}\b|$)/i;
+  // ── Estratégia 1: "Órgão [Municipal] de/do/da CIDADE" ────────────────────
+  // Captura até " - UF" ou vírgula/ponto/parêntese ou fim da string.
+  // O .+? (lazy) garante que paramos no primeiro separador encontrado.
+  // Aceita nomes compostos com preposições internas:
+  //   "Altamira do Paraná", "Rio das Ostras", "São José dos Campos",
+  //   "Feira de Santana", "Vitória da Conquista"
+  const reOrgao = /(?:prefeitura|c[aâ]mara(?:\s+municipal)?|município|municipio|saae|sanep|sabesp|crc-?\w*|sefaz|sesmet|autarquia|fundação|fundacao|conselho|instituto)\s+(?:municipal\s+)?(?:de|do|da|dos|das)\s+(.+?)(?:\s+-\s+[A-Z]{2}\b|\s*[,.([/]|$)/i;
 
   for (const fonte of [orgao, title]) {
     const m = fonte.match(reOrgao);
@@ -294,16 +297,13 @@ export function extrairCidade(orgao: string, title: string, uf: string): string 
       let cidade = m[1].trim();
       // Remove " - UF" ou " UF" colado no final
       cidade = cidade.replace(/\s*[-–]?\s*[A-Z]{2}$/, "").trim();
-      // Remove preposições residuais
-      cidade = cidade.replace(/\s+(de|do|da|dos|das)$/i, "").trim();
-      if (cidade.length >= 2 && cidade.length <= 50) return cidade;
+      if (cidade.length >= 2 && cidade.length <= 60) return cidade;
     }
   }
 
-  // ── Estratégia 2: padrão de título PCI "... de CIDADE - UF ..." ──────────
-  // Ex: "Câmara de Mara Rosa - GO abre concurso"
-  // Ex: "Prefeitura de Conselheiro Pena - MG abre"
-  const rePCI = /\bde\s+([^\s][^,.(]{1,50}?)\s+-\s+[A-Z]{2}\b/i;
+  // ── Estratégia 2: padrão de título PCI "de CIDADE - UF" ──────────────────
+  // Ex: "Câmara de Mara Rosa - GO abre concurso público..."
+  const rePCI = /\bde\s+(.+?)\s+-\s+[A-Z]{2}\b/i;
   const mPCI = title.match(rePCI);
   if (mPCI?.[1]) {
     const candidata = mPCI[1].trim();
@@ -312,8 +312,7 @@ export function extrairCidade(orgao: string, title: string, uf: string): string 
       "prefeitura", "camara", "câmara", "governo", "secretaria", "instituto",
       "fundacao", "fundação",
     ]);
-    if (!genericas.has(candidata.toLowerCase()) && candidata.length >= 2 && candidata.length <= 50) {
-      // Remove UF colado no final se sobrou
+    if (!genericas.has(candidata.toLowerCase()) && candidata.length >= 2 && candidata.length <= 60) {
       return candidata.replace(/\s*[-–]?\s*[A-Z]{2}$/, "").trim();
     }
   }
