@@ -305,7 +305,109 @@ function CardPublicarBtn({
   );
 }
 
+function LoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [senha, setSenha] = useState("");
+  const [erro, setErro]   = useState(false);
+  const [carregando, setCarregando] = useState(false);
+
+  const tentar = async () => {
+    setCarregando(true);
+    setErro(false);
+    try {
+      const res  = await fetch("/api/admin-auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ senha }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        sessionStorage.setItem("admin_auth", "1");
+        onLogin();
+      } else {
+        setErro(true);
+      }
+    } catch {
+      setErro(true);
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  return (
+    <div style={{
+      minHeight: "100vh", background: "#060E20",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: "'Sora',sans-serif",
+    }}>
+      <div style={{
+        background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: 16, padding: "40px 36px", width: 340, display: "flex",
+        flexDirection: "column", gap: 20, alignItems: "center",
+      }}>
+        <div style={{ fontSize: 28 }}>🔒</div>
+        <div style={{ color: "#fff", fontWeight: 700, fontSize: 18 }}>Área Administrativa</div>
+        <div style={{ color: "rgba(255,255,255,.35)", fontSize: 12, textAlign: "center" }}>
+          Concursos Contábeis · acesso restrito
+        </div>
+        <input
+          type="password"
+          placeholder="Senha"
+          value={senha}
+          onChange={e => { setSenha(e.target.value); setErro(false); }}
+          onKeyDown={e => e.key === "Enter" && tentar()}
+          autoFocus
+          style={{
+            width: "100%", padding: "11px 14px", borderRadius: 10,
+            background: "rgba(255,255,255,.06)",
+            border: erro ? "1px solid #FF4B4B" : "1px solid rgba(255,255,255,.1)",
+            color: "#fff", fontSize: 14, outline: "none",
+            boxSizing: "border-box" as const,
+          }}
+        />
+        {erro && (
+          <div style={{ color: "#FF4B4B", fontSize: 12, marginTop: -10 }}>
+            Senha incorreta.
+          </div>
+        )}
+        <button
+          onClick={tentar}
+          disabled={carregando || !senha}
+          style={{
+            width: "100%", padding: "11px 0", borderRadius: 10,
+            background: carregando || !senha ? "rgba(0,200,150,.3)" : "#00C896",
+            border: "none", color: "#060E20", fontWeight: 700, fontSize: 14,
+            cursor: carregando || !senha ? "not-allowed" : "pointer",
+            transition: "background .2s",
+          }}
+        >
+          {carregando ? "Verificando..." : "Entrar"}
+        </button>
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}
+
 function HomeContent() {
+  const [autenticado, setAutenticado] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const ok = sessionStorage.getItem("admin_auth") === "1";
+    setAutenticado(ok);
+  }, []);
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("admin_auth");
+    setAutenticado(false);
+  };
+
+  if (autenticado === null) return null;
+  if (!autenticado) return <LoginScreen onLogin={() => setAutenticado(true)} />;
+
+  return <AdminContent onLogout={handleLogout} />;
+}
+
+function AdminContent({ onLogout }: { onLogout: () => void }) {
   const router       = useRouter();
   const searchParams = useSearchParams();
 
@@ -1033,6 +1135,11 @@ function HomeContent() {
               color: "rgba(255,255,255,.4)", fontSize: 10, fontWeight: 600,
               padding: "3px 10px", borderRadius: 7, textDecoration: "none",
             }}>↗ Ver página pública</a>
+            <button onClick={onLogout} style={{
+              background: "rgba(255,75,75,.1)", border: "1px solid rgba(255,75,75,.2)",
+              color: "#FF4B4B", fontSize: 10, fontWeight: 600,
+              padding: "3px 10px", borderRadius: 7, cursor: "pointer",
+            }}>⏻ Sair</button>
           </div>
           <div style={{ color: "rgba(255,255,255,.25)", fontSize: 10, marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
             pciconcursos.com.br · @concursos.contabeis
