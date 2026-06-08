@@ -420,80 +420,101 @@ function HomeContent() {
     }
   };
 
+  // Executa o scraping por lotes em background (sem bloquear o loading inicial)
+  const runScrapeLotes = useCallback(async () => {
+    let TOTAL_LOTES = 22;
+    try {
+      const res0  = await fetch("/api/scrape-lote?lote=0");
+      const data0 = await res0.json();
+      if (data0?.totalLotes) TOTAL_LOTES = data0.totalLotes;
+      setLoteProgresso({ atual: 1, total: TOTAL_LOTES });
+      if (data0.ok && data0.totalAcumulado > 0) {
+        const res2  = await fetch("/api/concursos");
+        const data2 = await res2.json();
+        if (data2.ok) {
+          setConcursos(data2.concursos as Concurso[]);
+          setFromCache(false);
+          setAtualizadoEm(new Date(data2.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }));
+          console.log(`[Lote 1/${TOTAL_LOTES}] ${data0.novosNesteLote} novos | Total: ${data2.concursos.length}`);
+        }
+      }
+      if (data0.fim) return;
+    } catch (e: unknown) {
+      console.warn("[Lote 1] Falhou, continuando...", e);
+    }
+
+    for (let lote = 1; lote < TOTAL_LOTES; lote++) {
+      const isFim  = lote === TOTAL_LOTES - 1;
+      const params = new URLSearchParams({ lote: String(lote), ...(isFim ? { fim: "1" } : {}) });
+      try {
+        const res  = await fetch(`/api/scrape-lote?${params}`);
+        const data = await res.json();
+        setLoteProgresso({ atual: lote + 1, total: TOTAL_LOTES });
+        if (!data.ok) continue;
+        if (data.totalAcumulado > 0) {
+          const res2  = await fetch("/api/concursos");
+          const data2 = await res2.json();
+          if (data2.ok) {
+            const c = data2.concursos as Concurso[];
+            setConcursos(c);
+            setFromCache(false);
+            setAtualizadoEm(new Date(data2.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }));
+            console.log(`[Lote ${lote + 1}/${TOTAL_LOTES}] ${data.novosNesteLote} novos | Total: ${c.length}`);
+          }
+        }
+        if (data.fim) break;
+      } catch (e: unknown) {
+        console.warn(`[Lote ${lote + 1}] Falhou, continuando...`, e);
+        setLoteProgresso({ atual: lote + 1, total: TOTAL_LOTES });
+        continue;
+      }
+    }
+  }, []);
+
   const fetchConcursos = useCallback(async (forceRefresh = false) => {
     forceRefresh ? setRefreshing(true) : setLoading(true);
     setErro(null);
 
     try {
-      // Sem forceRefresh: tenta cache normal primeiro
+      // 1. Busca o cache (válido ou stale) — a rota nunca trava fazendo scraping ao vivo
       if (!forceRefresh) {
         const res  = await fetch("/api/concursos");
         const data = await res.json();
+
         if (data.ok) {
           const c = data.concursos as Concurso[];
           setConcursos(c);
-          setFromCache(data.fromCache ?? false);
+          setFromCache(data.fromCache ?? true);
           setAtualizadoEm(new Date(data.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }));
+          setLoading(false);
+
           console.group("Concursos Contábeis [CACHE]");
-          console.log("Total:", c.length);
+          console.log("Total:", c.length, data.stale ? "| ⚠️ Cache expirado — atualizando em background..." : "| ✅ Cache fresco");
           console.groupEnd();
-          return;
-        }
-      }
 
-      // Bug 2 fix: busca lote 0 primeiro para descobrir totalLotes real da API
-      // Evita hardcoded que desincroniza quando VAGAS_URLS / CONCURSOS_URLS mudam
-      let TOTAL_LOTES = 22; // fallback seguro
-      try {
-        const res0  = await fetch("/api/scrape-lote?lote=0");
-        const data0 = await res0.json();
-        if (data0?.totalLotes) TOTAL_LOTES = data0.totalLotes;
-        setLoteProgresso({ atual: 1, total: TOTAL_LOTES });
-        if (data0.ok && data0.totalAcumulado > 0) {
-          const res2  = await fetch("/api/concursos");
-          const data2 = await res2.json();
-          if (data2.ok) {
-            setConcursos(data2.concursos as Concurso[]);
-            setFromCache(false);
-            setAtualizadoEm(new Date(data2.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }));
-            console.log(`[Lote 1/${TOTAL_LOTES}] ${data0.novosNesteLote} novos | Total: ${data2.concursos.length}`);
-          }
-        }
-        if (data0.fim) return;
-      } catch (e: unknown) {
-        console.warn("[Lote 1] Falhou, continuando...", e);
-      }
-
-      for (let lote = 1; lote < TOTAL_LOTES; lote++) {
-        const isFim  = lote === TOTAL_LOTES - 1;
-        const params = new URLSearchParams({ lote: String(lote), ...(isFim ? { fim: "1" } : {}) });
-
-        try {
-          const res  = await fetch(`/api/scrape-lote?${params}`);
-          const data = await res.json();
-          setLoteProgresso({ atual: lote + 1, total: TOTAL_LOTES });
-
-          if (!data.ok) continue;
-
-          // Após cada lote, atualiza a lista com os dados acumulados
-          if (data.totalAcumulado > 0) {
-            const res2  = await fetch("/api/concursos");
-            const data2 = await res2.json();
-            if (data2.ok) {
-              const c = data2.concursos as Concurso[];
-              setConcursos(c);
-              setFromCache(false);
-              setAtualizadoEm(new Date(data2.atualizadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }));
-              console.log(`[Lote ${lote + 1}/${TOTAL_LOTES}] ${data.novosNesteLote} novos | Total: ${c.length}`);
+          // Cache expirado (stale): exibiu os dados imediatamente, atualiza em background
+          if (data.stale) {
+            setRefreshing(true);
+            try {
+              await runScrapeLotes();
+            } finally {
+              setRefreshing(false);
+              setLoteProgresso(null);
             }
           }
-
-          if (data.fim) break;
-        } catch (e: unknown) {
-          console.warn(`[Lote ${lote + 1}] Falhou, continuando...`, e);
-          setLoteProgresso({ atual: lote + 1, total: TOTAL_LOTES });
-          continue;
+          return;
         }
+
+        // Sem cache nenhum (semCache: true): precisa scraping completo
+        // Mantém loading=true e roda os lotes normalmente
+      }
+
+      // 2. Sem cache ou forceRefresh: scraping por lotes (loading visível)
+      try {
+        await runScrapeLotes();
+      } catch (e: unknown) {
+        console.error("Erro no scraping por lotes:", e);
+        setErro("Falha na conexão com o servidor. Verifique sua internet e tente novamente.");
       }
 
     } catch (e: unknown) {
@@ -504,7 +525,7 @@ function HomeContent() {
       setRefreshing(false);
       setLoteProgresso(null);
     }
-  }, []);
+  }, [runScrapeLotes]);
 
   const fetchHistorico = useCallback(async () => {
     try {
