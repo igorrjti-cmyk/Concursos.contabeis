@@ -358,7 +358,7 @@ function HomeContent() {
     if (salarioMin > 0)        params.set("salario", String(salarioMin));
     if (buscaDebounced.trim()) params.set("q",       buscaDebounced.trim());
     const query = params.toString();
-    router.replace(query ? "?" + query : "/", { scroll: false });
+    router.replace(query ? "/admin?" + query : "/admin", { scroll: false });
   }, [tab, filter, estadoFiltro, nivelFiltro, sortBy, salarioMin, buscaDebounced, router]);
 
   const confirmar = (mensagem: string): Promise<boolean> =>
