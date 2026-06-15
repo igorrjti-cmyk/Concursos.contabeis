@@ -50,7 +50,8 @@ export const VAGAS_URLS = [
   "/vagas/tecnico-contabil",
   "/vagas/analista-contabil",
   "/vagas/auditor-fiscal",
-  "/vagas/fiscal-de-tributos",
+  "/vagas/auditor-fiscal-da-receita-municipal",
+  "/vagas/auditor-fiscal-de-tributos",
   "/vagas/contador-municipal",
   "/vagas/contador-publico",
   "/vagas/auditor-de-controle-interno",
@@ -67,9 +68,23 @@ const CONCURSOS_URLS: string[] = [
   "/concursos/contador",
   "/concursos/contabilidade",
   "/concursos/auditor-fiscal",
+  "/concursos/auditor-fiscal-da-receita-municipal",
+  "/concursos/auditor-fiscal-de-tributos",
   "/concursos/fiscal-de-tributos",
   "/concursos/tecnico-em-contabilidade",
   "/concursos/analista-contabil",
+];
+
+// URLs de notícias por estado — captura concursos com vários cargos (ex: IPAM)
+// que não aparecem nas páginas de vagas por cargo específico.
+// O scrapeListagem já filtra por palavras-chave contábeis no título ou texto.
+export const NOTICIAS_URLS: string[] = [
+  "/noticias/sul/",
+  "/noticias/sudeste/",
+  "/noticias/nordeste/",
+  "/noticias/norte/",
+  "/noticias/centrooeste/",
+  "/noticias/nacional/",
 ];
 
 
@@ -190,6 +205,8 @@ const CARGO_CONTABIL_KW = [
   "contador", "contadora", "contábil", "contabilidade", "contab",
   // Auditores FISCAIS/TRIBUTÁRIOS — diretos (sempre contábeis)
   "auditor fiscal", "auditor-fiscal",
+  "auditor fiscal da receita", "auditor-fiscal da receita",
+  "auditor da receita municipal", "auditor da receita estadual",
   "auditor de tributos", "auditor tributário", "auditor tributario",
   "auditor de controle interno",
   "auditor municipal", "auditor estadual", "auditor federal",
@@ -198,8 +215,10 @@ const CARGO_CONTABIL_KW = [
   // Auditores genéricos só passam pelo fluxo de detalhe (verificação de CRC/Contábeis no PDF)
   // Fiscais tributários
   "fiscal tribut", "fiscal de tribut", "fiscal contábil",
-  "fiscal de rendas", "fiscal de receitas", "agente fiscal",
-  "agente de tributos", "inspetor fiscal", "fiscal municipal",
+  "fiscal de rendas", "fiscal de receitas", "fiscal da receita",
+  "fiscal da receita municipal", "fiscal municipal de tributos",
+  "agente fiscal de rendas",
+  "agente fiscal", "agente de tributos", "inspetor fiscal", "fiscal municipal",
   // Analistas contábeis
   "analista contábil", "analista de contabilidade", "analista contabil",
   // Técnicos em contabilidade
@@ -645,7 +664,8 @@ function extrairCargosContabeisDoEdital(texto: string): string[] {
   const mencoesDiretas = [
     /\b(Contador(?:a)?)\b/gi,
     /\b(T[eé]cnico\s+em\s+Contabilidade)\b/gi,
-    /\b(Auditor(?:\s+(?:Fiscal|Interno|de\s+Controle))?)\b/gi,
+    /\b(Auditor(?:[-\s]Fiscal)?(?:\s+(?:da\s+Receita(?:\s+Municipal)?|Interno|de\s+Controle(?:\s+Interno)?|Municipal|Estadual|Federal|de\s+Tributos|Tribut[aá]rio))?)/gi,
+    /\b(Fiscal\s+(?:de\s+Tribut\w*|da\s+Receita(?:\s+Municipal)?|de\s+Rendas|Contábil))/gi,
     /\b(Analista\s+(?:de\s+)?Cont[aá]b(?:il|ilidade))\b/gi,
   ];
   for (const re of mencoesDiretas) {
@@ -951,7 +971,7 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
 
 // ─── Scraping da listagem ─────────────────────────────────────────────────────
 
-export async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> {
+export async function scrapeListagem(url: string, ehPaginaDeNoticias = false): Promise<Partial<Concurso>[]> {
   const html = await fetchComTimeout(BASE_URL + url);
   if (!html) return [];
 
@@ -1116,7 +1136,12 @@ export async function scrapeListagem(url: string): Promise<Partial<Concurso>[]> 
     // "Vários Cargos" sempre passa — o filtro real acontece no scrapeDetalhe via cargosContabeis
     const ehVariosCargos = cargo.toLowerCase().includes("vários cargos") || cargo.toLowerCase().includes("varios cargos");
     const cargoGenerico = CARGO_GENERICO_CONTABIL_KW.some(kw => cargo.toLowerCase().includes(kw));
-    const passaParaDetalhe = (nivelSuperior && cargoGenerico) || ehVariosCargos || titleTemContabil;
+    // Concursos públicos multi-cargo (de páginas de notícias) passam para detalhe:
+    // ex: "IPAM de Caxias do Sul" não menciona contador no título mas tem no edital
+    const ehConcursoPublicoMulticargo = (nivelSuperior || nivelRaw.toLowerCase().includes("técnico") || nivelRaw.toLowerCase().includes("tecnico"))
+      && (title.toLowerCase().includes("concurso público") || title.toLowerCase().includes("concurso publico"))
+      && ehPaginaDeNoticias;
+    const passaParaDetalhe = (nivelSuperior && cargoGenerico) || ehVariosCargos || titleTemContabil || ehConcursoPublicoMulticargo;
     if (!ehConcursoContabil(cargo, title, orgao) && !passaParaDetalhe) continue;
 
     const cidadeExtraida = extrairCidade(orgao, title, ufDoTitle);
@@ -1297,10 +1322,29 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
     }
   }
 
+  // ── 3. Notícias por região — captura concursos com vários cargos (ex: IPAM)
+  //        que não aparecem nas páginas /vagas/ por cargo específico.
+  //        O scrapeListagem filtra pelo título da notícia e palavras-chave contábeis.
+  for (const url of NOTICIAS_URLS) {
+    try {
+      const items = await scrapeListagem(url, true); // ehPaginaDeNoticias = true
+      for (const item of items) {
+        if (item.status === "Encerrado" && (item.diasRestantes ?? -999) < -60) continue;
+        const key = item.id || slugify((item.cargo || "") + (item.orgao || ""));
+        if (!seen.has(key) && item.orgao && item.orgao !== "-") {
+          seen.add(key);
+          brutos.push({ ...item, id: key });
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
 
   if (brutos.length === 0) return getFallbackData();
 
-  const LIMITE_DETALHE = 80; // busca detalhes de até 80 concursos (antes era 40)
+  const LIMITE_DETALHE = 120; // aumentado para cobrir notícias regionais além das /vagas/
   const completos: Concurso[] = [];
 
   // Filtra brutos rapidamente antes de fazer scrapeDetalhe (sem HTTP)
