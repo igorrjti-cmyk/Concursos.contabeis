@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import InstagramCard from "@/components/InstagramCard";
+import CardEditor from "@/components/CardEditor";
 import { gerarLegenda } from "@/lib/legenda";
 import type { Concurso } from "@/lib/scraper";
 import { UF_NOMES } from "@/lib/scraper";
@@ -434,6 +435,7 @@ function AdminContent({ onLogout }: { onLogout: () => void }) {
     (searchParams.get("tab") as TabType) ?? "lista"
   );
   const [expanded, setExpanded]         = useState<string | null>(null);
+  const [editorAberto, setEditorAberto] = useState<Concurso | null>(null);
   const [copied, setCopied]             = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [cardFormato, setCardFormato]   = useState<CardFormato>("feed");
@@ -1460,6 +1462,9 @@ function AdminContent({ onLogout }: { onLogout: () => void }) {
                       <Btn color="#A78BFA" onClick={e => { e.stopPropagation(); setTab("cards"); setExpanded(c.id); }}>
                         Card
                       </Btn>
+                      <Btn color="#A78BFA" onClick={e => { e.stopPropagation(); setEditorAberto(c); }}>
+                        ✏️ Editar Card
+                      </Btn>
                       <Btn color="#FFB800" onClick={e => { e.stopPropagation(); marcarPostado(c); }} disabled={postado}>
                         {postado ? "Postado" : "Marcar postado"}
                       </Btn>
@@ -1614,6 +1619,16 @@ function AdminContent({ onLogout }: { onLogout: () => void }) {
 
                     {/* ── LINHA 2: Utilitários ── */}
                     <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                      <button
+                        onClick={() => setEditorAberto(c)}
+                        style={{
+                          background: "rgba(167,139,250,.12)", border: "1px solid rgba(167,139,250,.3)",
+                          color: "#A78BFA", borderRadius: 7, padding: "6px 10px",
+                          cursor: "pointer", fontSize: 10, fontWeight: 700,
+                        }}
+                      >
+                        ✏️ Editar
+                      </button>
                       <button
                         onClick={() => downloadCard(c, cardFormato)}
                         disabled={downloadingId === c.id + cardFormato}
@@ -1948,6 +1963,21 @@ function AdminContent({ onLogout }: { onLogout: () => void }) {
           </div>
         )}
       </main>
+
+      {/* ── Modal: Editor de Card ── */}
+      {editorAberto && (
+        <CardEditor
+          concurso={editorAberto}
+          onClose={() => setEditorAberto(null)}
+          onPublicar={(overrides, modo) => {
+            const concursoEditado = { ...editorAberto, ...overrides };
+            if (modo === "ambos" || modo === "feed") {
+              publicarInstagram(concursoEditado, modo);
+            }
+            setEditorAberto(null);
+          }}
+        />
+      )}
     </div>
     </>
   );
