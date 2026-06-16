@@ -1969,13 +1969,8 @@ function AdminContent({ onLogout }: { onLogout: () => void }) {
         <CardEditor
           concurso={editorAberto}
           onClose={() => setEditorAberto(null)}
-          onPublicar={(overrides, modo) => {
-            const concursoEditado = { ...editorAberto, ...overrides };
-            if (modo === "ambos" || modo === "feed") {
-              publicarInstagram(concursoEditado, modo);
-            }
-            setEditorAberto(null);
-          }}
+          onMarcarPostado={(c) => { marcarPostado(c); setEditorAberto(null); }}
+          onAgendamentoSalvo={() => { fetchAgendamentos(); setEditorAberto(null); }}
         />
       )}
     </div>
