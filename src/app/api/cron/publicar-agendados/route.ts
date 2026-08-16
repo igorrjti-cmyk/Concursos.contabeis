@@ -5,6 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { emailErroCron } from "@/lib/email";
 
 export const runtime     = "nodejs";
 export const maxDuration = 60;
@@ -56,7 +57,11 @@ async function publicarViaAPI(imageUrl: string, tipo: "IMAGE" | "STORIES", legen
     });
     const cData = await cRes.json() as { id?: string; error?: { message: string; code?: number; error_subcode?: number } };
     if (!cData.id) {
-      return { id: null, erro: `container: ${cData.error?.message ?? "sem id"} (code ${cData.error?.code})` };
+      const tokenExpirado = cData.error?.code === 190;
+      const dica = tokenExpirado
+        ? " — TOKEN DO INSTAGRAM EXPIRADO. Renove em developers.facebook.com/tools/explorer e atualize IG_ACCESS_TOKEN na Vercel."
+        : "";
+      return { id: null, erro: `container: ${cData.error?.message ?? "sem id"} (code ${cData.error?.code})${dica}` };
     }
 
     // Aguarda processamento (máx 30s)
@@ -213,6 +218,16 @@ export async function GET(req: Request) {
 
   const agora = new Date();
   const agoraBRT = new Date(agora.getTime() - 3 * 60 * 60 * 1000);
+
+  if (!isTest) {
+    const falhas = resultados
+      .filter(r => typeof r.status === "string" && (r.status.includes("❌") || r.status === "erro"))
+      .map(r => `${r.cargo ?? "?"} (${r.modo ?? "?"}): ${r.status}${r.feed ? " | feed: " + r.feed : ""}${r.stories ? " | stories: " + r.stories : ""}${r.erro ? " | " + r.erro : ""}`);
+
+    if (falhas.length > 0) {
+      await emailErroCron("publicar-agendados", falhas);
+    }
+  }
 
   return NextResponse.json({
     ok:            true,

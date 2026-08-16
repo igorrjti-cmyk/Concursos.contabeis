@@ -4,6 +4,7 @@ const nextConfig = {
     "unpdf",
     "canvas",
     "sharp",
+    "@napi-rs/canvas",
   ],
 
   webpack(config, { isServer }) {

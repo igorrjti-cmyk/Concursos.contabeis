@@ -168,6 +168,50 @@ function miniCard(c: Concurso): string {
     </div>`;
 }
 
+// ─── Template: erro em cron job ───────────────────────────────────────────────
+// Dispara sempre que um cron falha (scraping, geração de card, publicação, etc).
+// Objetivo: você só recebe e-mail quando ALGO PRECISA da sua atenção —
+// nunca precisa checar os logs da Vercel "por via das dúvidas".
+export async function emailErroCron(nomeCron: string, detalhes: string[]): Promise<boolean> {
+  if (!NOTIFY_EMAIL || detalhes.length === 0) return false;
+
+  const agora = new Date().toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short",
+  });
+
+  const listaErros = detalhes
+    .slice(0, 10)
+    .map(d => `<li style="margin-bottom:8px;color:rgba(255,255,255,.7);font-size:13px">${d}</li>`)
+    .join("");
+
+  const content = `
+    <div class="header">
+      <div class="header-accent"></div>
+      <div class="header-accent2"></div>
+      <div class="logo-row">
+        <div class="logo-dot"></div>
+        <span class="logo-text">Concursos Contábeis</span>
+      </div>
+      <h1>🚨 Falha no cron: ${nomeCron}</h1>
+      <p>${agora} (Brasília)</p>
+    </div>
+    <div class="body">
+      <p style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:16px;line-height:1.6">
+        O cron <strong>${nomeCron}</strong> rodou, mas encontrou ${detalhes.length}
+        erro${detalhes.length > 1 ? "s" : ""}. O sistema tenta de novo na próxima execução
+        automaticamente — mas se isso persistir por vários dias, vale checar manualmente.
+      </p>
+      <ul style="padding-left:18px;margin:0">${listaErros}</ul>
+      ${detalhes.length > 10 ? `<p style="font-size:12px;color:rgba(255,255,255,.35);margin-top:12px">+ ${detalhes.length - 10} erro(s) adicional(is) — veja os logs completos na Vercel.</p>` : ""}
+    </div>`;
+
+  return enviarEmail(
+    NOTIFY_EMAIL,
+    `🚨 Falha no cron ${nomeCron} (${detalhes.length} erro${detalhes.length > 1 ? "s" : ""})`,
+    baseHtml(content, `Falha no cron ${nomeCron}`)
+  );
+}
+
 // ─── Template: novo concurso ──────────────────────────────────────────────────
 export async function emailNovoConcurso(concurso: Concurso): Promise<boolean> {
   if (!NOTIFY_EMAIL) return false;

@@ -5,6 +5,10 @@
       "schedule": "0 6 * * *"
     },
     {
+      "path": "/api/cron/gerar-agendamentos-automaticos",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/cron/notificacoes",
       "schedule": "0 9 * * *"
     },

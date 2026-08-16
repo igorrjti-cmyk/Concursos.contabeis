@@ -4,7 +4,7 @@
 
 import { NextResponse }         from "next/server";
 import { getSupabase }          from "@/lib/supabase";
-import { emailNovoConcurso, emailAlertaPrazo } from "@/lib/email";
+import { emailNovoConcurso, emailAlertaPrazo, emailErroCron } from "@/lib/email";
 import type { Concurso }        from "@/lib/scraper";
 
 export const runtime = "nodejs";
@@ -116,6 +116,10 @@ export async function GET(req: Request) {
 
   } catch (e: unknown) {
     resultados.erros.push(String(e));
+  }
+
+  if (resultados.erros.length > 0) {
+    await emailErroCron("notificacoes", resultados.erros);
   }
 
   return NextResponse.json({ ok: true, ...resultados });

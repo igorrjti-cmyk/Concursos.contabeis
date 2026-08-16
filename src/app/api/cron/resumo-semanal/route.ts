@@ -4,7 +4,7 @@
 
 import { NextResponse }             from "next/server";
 import { getSupabase }              from "@/lib/supabase";
-import { emailResumoSemanal }       from "@/lib/email";
+import { emailResumoSemanal, emailErroCron }       from "@/lib/email";
 import type { Concurso }            from "@/lib/scraper";
 
 export const runtime    = "nodejs";
@@ -78,6 +78,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, novos: novos.length, encerrando: encerrandoEssaSemana.length });
 
   } catch (e: unknown) {
+    await emailErroCron("resumo-semanal", [String(e)]);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

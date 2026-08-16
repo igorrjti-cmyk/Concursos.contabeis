@@ -3,6 +3,7 @@
 // Usa o endpoint de lote em vez de scrapeAllConcursos() direto para não estourar timeout.
 
 import { NextResponse } from "next/server";
+import { emailErroCron } from "@/lib/email";
 
 export const runtime     = "nodejs";
 export const maxDuration = 300;
@@ -57,6 +58,10 @@ export async function GET(req: Request) {
 
   const duracaoMs = Date.now() - inicio;
   console.log(`[CRON] ${lotesOk}/${totalLotes} lotes OK | ${totalAcumulado} concursos | ${duracaoMs}ms`);
+
+  if (erros.length > 0) {
+    await emailErroCron("atualizar-concursos", erros);
+  }
 
   return NextResponse.json({
     ok: erros.length === 0,

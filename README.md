@@ -230,13 +230,67 @@ Configurados em `vercel.json` — executados automaticamente pelo Vercel.
 | Cron | Schedule | Horário Brasília | O que faz |
 |---|---|---|---|
 | `atualizar-concursos` | `0 6 * * *` | 03:00 todo dia | Executa scraping completo e atualiza o cache |
+| `gerar-agendamentos-automaticos` | `0 7 * * *` | 04:00 todo dia | **Detecta concursos novos e cria os agendamentos sozinho** (card + legenda gerados no servidor) |
 | `notificacoes` | `0 9 * * *` | 06:00 todo dia | Envia e-mail de novos concursos (máx. 5/dia) e alerta de prazos |
 | `resumo-semanal` | `0 9 * * 0` | 06:00 domingos | Envia resumo semanal por e-mail |
-| `publicar-agendados` | `0 9 * * *` | 06:00 todo dia | Publica posts agendados via Instagram Graph API |
+| `publicar-agendados` | `0 9 * * *` | 06:00 todo dia | Publica posts agendados vencidos via Instagram Graph API |
 
 **Segurança:** todos os crons verificam o header `Authorization: Bearer CRON_SECRET`. O Vercel injeta esse header automaticamente — chamadas externas sem o secret recebem 401.
 
 **Timeout:** os crons têm `maxDuration: 300` segundos. O cron de notificações tem limite de 5 e-mails por execução para não estourar o timeout.
+
+---
+
+## Publicação 100% automática (sem intervenção manual)
+
+Antes, alguém precisava abrir o painel `/admin` e clicar em "Agendar" para cada concurso — a imagem do card era gerada no **navegador** (Canvas), então só existia se um humano abrisse a página.
+
+Agora o cron `gerar-agendamentos-automaticos` faz isso sozinho, todo dia:
+
+1. Lê o cache de concursos (já atualizado pelo cron anterior).
+2. Ignora os que já foram publicados, agendados ou notificados (mesmo critério do cron de e-mails).
+3. Pega os concursos com inscrições abertas que faltam menos tempo para encerrar (mais urgentes primeiro).
+4. Gera o card (feed + stories) **direto no servidor**, com `@napi-rs/canvas` (`src/lib/card-renderer-server.ts`) e a legenda automática (`src/lib/legenda.ts`).
+5. Salva o agendamento no Supabase já com `agendado_para` espaçado ao longo do dia.
+6. O cron `publicar-agendados` publica no horário certo — sem ninguém tocar em nada.
+
+**Variáveis opcionais para ajustar o comportamento:**
+
+```env
+MAX_POSTS_AUTOMATICOS_DIA=3   # quantos posts novos criar por dia (padrão: 3)
+INTERVALO_HORAS_POSTS=4       # espaçamento entre os posts do mesmo dia (padrão: 4h)
+```
+
+### ⚠️ Importante: frequência do cron no plano Vercel
+
+No plano **Hobby (grátis)**, a Vercel só permite que cada cron rode **1x por dia**. Isso significa que:
+- `atualizar-concursos` → `gerar-agendamentos-automaticos` → `publicar-agendados` continuam 100% automáticos, mas o cron de publicação só roda uma vez ao dia — então, mesmo com `agendado_para` espaçado (ex: 4 em 4 horas), tudo acaba sendo publicado no mesmo horário da execução diária.
+- Se quiser publicações realmente espaçadas ao longo do dia **sem precisar do plano Pro**, use um serviço gratuito de agendamento externo (ex: [cron-job.org](https://cron-job.org)) para chamar este endpoint a cada 2–4 horas:
+
+```
+GET https://SEU_DOMINIO/api/cron/publicar-agendados
+Header: Authorization: Bearer SEU_CRON_SECRET
+```
+
+- No plano **Pro**, é possível configurar o `publicar-agendados` diretamente no `vercel.json` com um schedule mais frequente (ex: `"*/30 * * * *"` para rodar a cada 30 min).
+
+### Fonte "Sora" no card gerado pelo servidor
+
+O card do navegador usa a fonte "Sora". No servidor, sem registrar o arquivo `.ttf`, o desenho usa a fonte padrão do sistema (sans-serif) — o layout fica idêntico, só a tipografia muda levemente. Para paridade visual total, baixe a fonte Sora (Google Fonts), coloque em `public/fonts/Sora-ExtraBold.ttf` e ajuste `registrarFonteSora()` em `src/lib/card-renderer-server.ts`.
+
+---
+
+## Alerta automático quando algo falha
+
+Todo cron (scraping, geração de agendamentos, publicação, notificações e resumo semanal) envia um **e-mail de erro** para `NOTIFY_EMAIL` sempre que encontra falhas — assim você só recebe mensagem quando precisa agir, sem precisar checar os logs da Vercel por rotina.
+
+Casos cobertos:
+- Lote de scraping falhou.
+- Geração de card ou inserção de agendamento falhou.
+- Publicação no Instagram falhou (inclui detecção específica de **token expirado** — o e-mail já vem com o link para renovar).
+- Envio de notificação ou resumo semanal falhou.
+
+Limitação importante: se o problema for justamente o `RESEND_API_KEY` (o serviço de e-mail) estar mal configurado, o alerta também não vai sair — nesse caso, o único jeito de saber é olhando os logs da Vercel diretamente.
 
 ---
 
