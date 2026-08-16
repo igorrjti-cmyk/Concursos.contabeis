@@ -3,12 +3,13 @@
 // da Vercel, sem precisar de navegador. Usa @napi-rs/canvas (binário nativo
 // pré-compilado, compatível com o runtime Node.js da Vercel).
 //
-// Observação sobre a fonte: no navegador o card usa a fonte "Sora". Aqui,
-// se você não registrar um arquivo .ttf da Sora, o desenho cai no fallback
-// "sans-serif" do sistema — o layout continua igual, só a tipografia muda
-// um pouco. Para ficar idêntico ao navegador, baixe a fonte (Google Fonts,
-// arquivo .ttf) e ajuste `registrarFonteSora()` abaixo.
+// IMPORTANTE: o ambiente serverless da Vercel NÃO tem nenhuma fonte de
+// sistema instalada (diferente do seu PC/Mac). Sem registrar uma fonte
+// manualmente, o @napi-rs/canvas desenha as formas do card normalmente,
+// mas o texto sai invisível. Por isso a fonte Sora vem empacotada em
+// public/fonts/Sora-Variable.ttf e é sempre registrada abaixo.
 
+import path from "node:path";
 import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
 import type { Concurso } from "./scraper";
 import { desenharCard, type DesenhavelCtx } from "./card-draw";
@@ -17,19 +18,16 @@ let fonteRegistrada = false;
 
 function registrarFonteSora() {
   if (fonteRegistrada) return;
-  fonteRegistrada = true;
-  // Se você adicionar o arquivo da fonte em /public/fonts/Sora-Bold.ttf (ou
-  // similar) e quiser paridade visual total com o navegador, descomente e
-  // ajuste o caminho abaixo:
-  //
-  // try {
-  //   GlobalFonts.registerFromPath(
-  //     process.cwd() + "/public/fonts/Sora-ExtraBold.ttf",
-  //     "Sora"
-  //   );
-  // } catch {
-  //   /* segue com fallback sans-serif */
-  // }
+  try {
+    const caminho = path.join(process.cwd(), "public", "fonts", "Sora-Variable.ttf");
+    GlobalFonts.registerFromPath(caminho, "Sora");
+    fonteRegistrada = true;
+  } catch (e) {
+    // Se falhar (ex: arquivo não encontrado no bundle), o card ainda é
+    // gerado, mas o texto pode sair invisível — loga alto para aparecer
+    // nos logs da Vercel e no e-mail de erro do cron.
+    console.error("[card-renderer-server] Falha ao registrar fonte Sora:", e);
+  }
 }
 
 /**
@@ -50,7 +48,7 @@ export function renderCardServer(
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d") as unknown as DesenhavelCtx;
 
-  const fontFamily = fonteRegistrada ? "Sora, sans-serif" : "sans-serif";
+  const fontFamily = "Sora, sans-serif";
   desenharCard(ctx, c, formato, fontFamily);
 
   const buffer = canvas.toBuffer("image/png");
