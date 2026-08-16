@@ -5,7 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { emailErroCron } from "@/lib/email";
+import { emailErroCron, emailPublicacaoSucesso } from "@/lib/email";
 
 export const runtime     = "nodejs";
 export const maxDuration = 60;
@@ -119,6 +119,7 @@ export async function GET(req: Request) {
     const r: Record<string, unknown> = {
       id:           ag.id,
       cargo:        ag.cargo,
+      orgao:        ag.orgao,
       modo:         ag.modo,
       agendado_para: ag.agendado_para,
       tem_feed:     !!ag.feed_base64,
@@ -191,6 +192,8 @@ export async function GET(req: Request) {
         });
 
         r.status = "✅ publicado";
+        r.postIdFeed = postIdFeed;
+        r.postIdStories = postIdStories;
       } else {
         // FIX 2: falhou — NÃO marca como publicado, permite retry na próxima execução
         // Mas registra tentativa para não tentar infinitamente (máx 3 tentativas)
@@ -226,6 +229,20 @@ export async function GET(req: Request) {
 
     if (falhas.length > 0) {
       await emailErroCron("publicar-agendados", falhas);
+    }
+
+    const publicadosComSucesso = resultados
+      .filter(r => r.status === "✅ publicado")
+      .map(r => ({
+        cargo: String(r.cargo ?? "?"),
+        orgao: String(r.orgao ?? "?"),
+        modo: String(r.modo ?? "?"),
+        postIdFeed: r.postIdFeed as string | null | undefined,
+        postIdStories: r.postIdStories as string | null | undefined,
+      }));
+
+    if (publicadosComSucesso.length > 0) {
+      await emailPublicacaoSucesso(publicadosComSucesso);
     }
   }
 

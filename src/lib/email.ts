@@ -212,6 +212,50 @@ export async function emailErroCron(nomeCron: string, detalhes: string[]): Promi
   );
 }
 
+// ─── Template: publicação(ões) com sucesso ────────────────────────────────────
+// Dispara sempre que o cron publicar-agendados publicar algo com sucesso —
+// assim você acompanha pelo e-mail, sem precisar abrir o cron-job.org ou o painel.
+export async function emailPublicacaoSucesso(
+  publicados: { cargo: string; orgao: string; modo: string; postIdFeed?: string | null; postIdStories?: string | null }[]
+): Promise<boolean> {
+  if (!NOTIFY_EMAIL || publicados.length === 0) return false;
+
+  const agora = new Date().toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short",
+  });
+
+  const itens = publicados.map(p => `
+    <li style="margin-bottom:14px;color:rgba(255,255,255,.75);font-size:14px;line-height:1.5">
+      <strong style="color:#00C896">${p.cargo}</strong> — ${p.orgao}<br/>
+      ${p.postIdFeed ? `📷 Feed publicado` : ""}${p.postIdFeed && p.postIdStories ? " · " : ""}${p.postIdStories ? `📱 Stories publicado` : ""}
+    </li>`).join("");
+
+  const content = `
+    <div class="header">
+      <div class="header-accent"></div>
+      <div class="header-accent2"></div>
+      <div class="logo-row">
+        <div class="logo-dot"></div>
+        <span class="logo-text">Concursos Contábeis</span>
+      </div>
+      <h1>✅ Publicado no Instagram</h1>
+      <p>${agora} (Brasília)</p>
+    </div>
+    <div class="body">
+      <p style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:16px;line-height:1.6">
+        ${publicados.length} post${publicados.length > 1 ? "s foram publicados" : " foi publicado"} automaticamente,
+        sem nenhuma ação manual.
+      </p>
+      <ul style="padding-left:18px;margin:0;list-style:none">${itens}</ul>
+    </div>`;
+
+  return enviarEmail(
+    NOTIFY_EMAIL,
+    `✅ ${publicados.length} post${publicados.length > 1 ? "s publicados" : " publicado"} no Instagram`,
+    baseHtml(content, `${publicados.length} publicação(ões) automática(s) no Instagram`)
+  );
+}
+
 // ─── Template: novo concurso ──────────────────────────────────────────────────
 export async function emailNovoConcurso(concurso: Concurso): Promise<boolean> {
   if (!NOTIFY_EMAIL) return false;
