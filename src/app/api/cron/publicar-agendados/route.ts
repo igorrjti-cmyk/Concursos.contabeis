@@ -64,10 +64,10 @@ async function publicarViaAPI(imageUrl: string, tipo: "IMAGE" | "STORIES", legen
       return { id: null, erro: `container: ${cData.error?.message ?? "sem id"} (code ${cData.error?.code})${dica}` };
     }
 
-    // Aguarda processamento (máx 30s)
+    // Aguarda processamento (máx ~16s, antes eram até 30s)
     let statusFinal = "";
-    for (let i = 0; i < 10; i++) {
-      await new Promise(r => setTimeout(r, 3000));
+    for (let i = 0; i < 8; i++) {
+      await new Promise(r => setTimeout(r, 2000));
       const sRes  = await fetch(`https://graph.facebook.com/${IG_VER}/${cData.id}?fields=status_code,status&access_token=${IG_TOKEN}`);
       const sData = await sRes.json() as { status_code?: string; status?: string };
       statusFinal = sData.status ?? sData.status_code ?? "";
@@ -103,7 +103,13 @@ export async function GET(req: Request) {
 
   // Busca agendamentos pendentes vencidos (com imagens salvas)
   // Em modo test, também mostra agendamentos futuros (para diagnóstico)
-  const query = sb.from("agendamentos_posts").select("id, concurso_id, cargo, orgao, estado, modo, agendado_para, publicado, feed_base64, stories_base64, legenda, tentativas").eq("publicado", false).limit(10);
+  // IMPORTANTE: em produção processa só 1 agendamento por execução.
+  // Com upload + espera de processamento do Instagram, cada post pode levar
+  // ~15-20s mesmo já otimizado (feed+stories em paralelo). Processar vários
+  // na mesma chamada arriscava estourar o timeout do serviço de cron externo
+  // (ex: cron-job.org no plano free). Como o cron roda a cada poucas horas,
+  // processar 1 por vez ainda dá conta de publicar tudo no mesmo dia.
+  const query = sb.from("agendamentos_posts").select("id, concurso_id, cargo, orgao, estado, modo, agendado_para, publicado, feed_base64, stories_base64, legenda, tentativas").eq("publicado", false).limit(isTest ? 10 : 1);
   const { data: pendentes, error } = isTest
     ? await query.order("agendado_para", { ascending: true })
     : await query.lte("agendado_para", new Date().toISOString());
@@ -138,35 +144,40 @@ export async function GET(req: Request) {
     }
 
     try {
-      let postIdFeed = null, postIdStories = null;
+      // Publica feed e stories EM PARALELO (não sequencial) — reduz o tempo
+      // total pela metade, importante porque serviços de cron externos
+      // (como cron-job.org no plano free) têm timeout curto de resposta.
+      const [resFeed, resStories] = await Promise.all([
+        (ag.modo === "feed" || ag.modo === "ambos") && ag.feed_base64
+          ? (async () => {
+              const { url: imageUrl, erro: erroUpload } = await uploadBase64(ag.feed_base64 as string, "feed");
+              if (!imageUrl) return { id: null, texto: `❌ upload: ${erroUpload}` };
+              const { id, erro } = await publicarViaAPI(imageUrl, "IMAGE", ag.legenda);
+              return { id, texto: id ? `✅ postId: ${id}` : `❌ Graph API: ${erro}` };
+            })()
+          : Promise.resolve(
+              (ag.modo === "feed" || ag.modo === "ambos")
+                ? { id: null, texto: "⚠️ sem imagem salva" }
+                : { id: null, texto: undefined }
+            ),
+        (ag.modo === "stories" || ag.modo === "ambos") && ag.stories_base64
+          ? (async () => {
+              const { url: imageUrl, erro: erroUpload } = await uploadBase64(ag.stories_base64 as string, "stories");
+              if (!imageUrl) return { id: null, texto: `❌ upload: ${erroUpload}` };
+              const { id, erro } = await publicarViaAPI(imageUrl, "STORIES");
+              return { id, texto: id ? `✅ postId: ${id}` : `❌ Graph API: ${erro}` };
+            })()
+          : Promise.resolve(
+              (ag.modo === "stories" || ag.modo === "ambos")
+                ? { id: null, texto: "⚠️ sem imagem salva" }
+                : { id: null, texto: undefined }
+            ),
+      ]);
 
-      // ── Publica Feed ──────────────────────────────────────────────────────
-      if ((ag.modo === "feed" || ag.modo === "ambos") && ag.feed_base64) {
-        const { url: imageUrl, erro: erroUpload } = await uploadBase64(ag.feed_base64 as string, "feed");
-        if (imageUrl) {
-          const { id: pubId, erro: erroPub } = await publicarViaAPI(imageUrl, "IMAGE", ag.legenda);
-          postIdFeed = pubId;
-          r.feed = pubId ? `✅ postId: ${pubId}` : `❌ Graph API: ${erroPub}`;
-        } else {
-          r.feed = `❌ upload: ${erroUpload}`;
-        }
-      } else if (ag.modo === "feed" || ag.modo === "ambos") {
-        r.feed = "⚠️ sem imagem salva";
-      }
-
-      // ── Publica Stories ───────────────────────────────────────────────────
-      if ((ag.modo === "stories" || ag.modo === "ambos") && ag.stories_base64) {
-        const { url: imageUrl, erro: erroUpload } = await uploadBase64(ag.stories_base64 as string, "stories");
-        if (imageUrl) {
-          const { id: pubId, erro: erroPub } = await publicarViaAPI(imageUrl, "STORIES");
-          postIdStories = pubId;
-          r.stories = pubId ? `✅ postId: ${pubId}` : `❌ Graph API: ${erroPub}`;
-        } else {
-          r.stories = `❌ upload: ${erroUpload}`;
-        }
-      } else if (ag.modo === "stories" || ag.modo === "ambos") {
-        r.stories = "⚠️ sem imagem salva";
-      }
+      const postIdFeed = resFeed.id;
+      const postIdStories = resStories.id;
+      if (resFeed.texto)    r.feed    = resFeed.texto;
+      if (resStories.texto) r.stories = resStories.texto;
 
       const ok = postIdFeed !== null || postIdStories !== null;
       const falhouTotal = !ok &&
