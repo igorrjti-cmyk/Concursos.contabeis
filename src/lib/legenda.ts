@@ -161,8 +161,8 @@ export function gerarLegenda(c: Concurso): string {
     `📍 Órgão: ${c.orgao}\n` +
     `🗺 Estado: ${c.cidade ? c.cidade + "/" : ""}${c.estado}\n` +
     `🎓 Nível: ${c.nivel}\n` +
-    `🎯 Vagas: ${c.vagas}\n` +
-    `💰 Salário: ${c.salario}\n` +
+    `🎯 Vagas: ${c.vagas !== "Ver edital" ? c.vagas : "a definir no edital"}\n` +
+    `💰 Salário: ${c.salario !== "Ver edital" ? c.salario : "a definir no edital"}\n` +
     `${bancaEmoji ? bancaEmoji + " " : ""}🏦 Banca: ${c.banca}\n` +
     `📅 Inscrições: ${c.inscricao !== "-" ? c.inscricao : "até " + c.inscricaoAte}` +
     linhaProva +

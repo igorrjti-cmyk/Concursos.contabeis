@@ -212,8 +212,8 @@ export default function CardEditor({ concurso, onClose, onMarcarPostado, onAgend
     : concursoEditado.cargo;
   const titleSize = cargoDisplay.length > 30 ? 20 : cargoDisplay.length > 20 ? 25 : 30;
   const campos = [
-    { icon: "💰", label: "Salário",  value: concursoEditado.salario },
-    { icon: "🎯", label: "Vagas",    value: concursoEditado.vagas },
+    { icon: "💰", label: "Salário",  value: concursoEditado.salario !== "Ver edital" ? concursoEditado.salario : "A definir" },
+    { icon: "🎯", label: "Vagas",    value: concursoEditado.vagas   !== "Ver edital" ? concursoEditado.vagas   : "A definir" },
     { icon: "📅", label: concursoEditado.status === "Inscricoes Abertas" ? "Inscrições até" : "Edital", value: concursoEditado.inscricaoAte },
     { icon: "🏦", label: "Banca",    value: concursoEditado.banca !== "-" ? concursoEditado.banca : "A definir" },
   ];

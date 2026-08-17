@@ -51,8 +51,8 @@ export default function InstagramCard({
   const orgaoSize = isStories ? 9 : titleSize * 0.52;
 
   const campos = [
-    { icon: "💰", label: "Salário",  value: c.salario },
-    { icon: "🎯", label: "Vagas",    value: c.vagas   },
+    { icon: "💰", label: "Salário",  value: c.salario !== "Ver edital" ? c.salario : "A definir" },
+    { icon: "🎯", label: "Vagas",    value: c.vagas   !== "Ver edital" ? c.vagas   : "A definir" },
     {
       icon: "📅",
       label: c.status === "Inscricoes Abertas" ? "Inscrições até" : "Edital",
