@@ -1205,6 +1205,33 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
     });
   }
 
+  // ── Fallback: site oficial do concurso ────────────────────────────────────
+  // A PCI Concursos passou a esconder o link do PDF do edital atrás de uma
+  // verificação anti-bot em JavaScript (href="javascript:void(0)" no HTML puro),
+  // então o scraper (sem execução de JS) não consegue mais capturá-lo na maioria
+  // dos casos. Como alternativa, tenta achar o site oficial de inscrição citado
+  // no texto da notícia (ex.: "exclusivamente pelo site www.inepam.org.br") —
+  // mais útil para o candidato do que só o link da notícia do PCI.
+  let siteOficialHref = "";
+  if (!pdfHref) {
+    const DOMINIOS_IGNORADOS = [
+      "pciconcursos.com.br", "facebook.com", "instagram.com", "twitter.com",
+      "x.com", "linkedin.com", "t.me", "telegram", "whatsapp.com", "youtube.com",
+    ];
+    $("a[href^='http']").each((_, el) => {
+      if (siteOficialHref) return;
+      const h = ($(el).attr("href") || "").trim();
+      try {
+        const host = new URL(h).hostname.replace(/^www\./, "");
+        if (DOMINIOS_IGNORADOS.some(d => host.includes(d))) return;
+        const contexto = ($(el).parent().text() || "").toLowerCase();
+        if (contexto.includes("site") || contexto.includes("inscri") || contexto.includes("edital")) {
+          siteOficialHref = h;
+        }
+      } catch { /* URL inválida, ignora */ }
+    });
+  }
+
   // ── Verifica data de publicação da notícia ───────────────────────────────
   const bodyText = $("body").text();
   const anoAtualCheck = new Date().getFullYear();
@@ -1227,6 +1254,7 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   const texto = bodyText;
   const det   = extrairDetalhes(texto);
   if (pdfHref) det.linkEdital = pdfHref;
+  else if (siteOficialHref) det.linkEdital = siteOficialHref;
 
   // ── Tenta banca pelos links externos ─────────────────────────────────────
   if (det.banca === "-") {

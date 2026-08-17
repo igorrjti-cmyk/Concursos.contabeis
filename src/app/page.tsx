@@ -311,6 +311,10 @@ export default function PublicPage() {
               {filtered.map((c, i) => {
                 const cor = STATUS_DOT[c.status] ?? "#888";
                 const isPdf = c.linkEdital.toLowerCase().endsWith(".pdf");
+                // PCI passou a esconder o PDF do edital atrás de verificação JS —
+                // quando não achamos o PDF, o scraper tenta o site oficial do
+                // concurso (banca/inscrições) como alternativa ao link da notícia.
+                const isSiteOficial = !isPdf && c.linkEdital !== "" && c.linkEdital !== c.linkNoticia;
                 const temProva = c.dataProva && c.dataProva !== "-";
 
                 return (
@@ -358,20 +362,18 @@ export default function PublicPage() {
                       </div>
 
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                        {c.salario !== "Ver edital" && (
-                          <span className="tag-sal" style={{
-                            background: "rgba(0,200,150,.08)", border: "1px solid rgba(0,200,150,.15)",
-                            color: "#00C896", padding: "3px 9px", borderRadius: 7,
-                            fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
-                          }}>{c.salario}</span>
-                        )}
-                        {c.vagas !== "Ver edital" && (
-                          <span style={{
-                            background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.15)",
-                            color: "#A78BFA", padding: "3px 9px", borderRadius: 7,
-                            fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
-                          }}>{c.vagas}</span>
-                        )}
+                        <span className="tag-sal" style={{
+                          background: "rgba(0,200,150,.08)", border: "1px solid rgba(0,200,150,.15)",
+                          color: c.salario !== "Ver edital" ? "#00C896" : "rgba(0,200,150,.5)",
+                          padding: "3px 9px", borderRadius: 7,
+                          fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
+                        }}>{c.salario !== "Ver edital" ? c.salario : "Salário a definir"}</span>
+                        <span style={{
+                          background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.15)",
+                          color: c.vagas !== "Ver edital" ? "#A78BFA" : "rgba(167,139,250,.5)",
+                          padding: "3px 9px", borderRadius: 7,
+                          fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
+                        }}>{c.vagas !== "Ver edital" ? c.vagas : "Vagas a definir"}</span>
                         <span style={{
                           background: (STATUS_DOT[c.status] ?? "#888") + "15",
                           border: "1px solid " + (STATUS_DOT[c.status] ?? "#888") + "30",
@@ -389,9 +391,9 @@ export default function PublicPage() {
                         rel="noreferrer"
                         className="edital-link"
                         style={{
-                          background: isPdf ? "rgba(0,200,150,.08)" : "rgba(167,139,250,.08)",
-                          border: isPdf ? "1px solid rgba(0,200,150,.2)" : "1px solid rgba(167,139,250,.2)",
-                          color: isPdf ? "#00C896" : "#A78BFA",
+                          background: isPdf ? "rgba(0,200,150,.08)" : isSiteOficial ? "rgba(255,184,0,.08)" : "rgba(167,139,250,.08)",
+                          border: isPdf ? "1px solid rgba(0,200,150,.2)" : isSiteOficial ? "1px solid rgba(255,184,0,.25)" : "1px solid rgba(167,139,250,.2)",
+                          color: isPdf ? "#00C896" : isSiteOficial ? "#FFB800" : "#A78BFA",
                           borderRadius: 9, padding: "8px 14px",
                           fontSize: 12, fontWeight: 700,
                           textDecoration: "none", whiteSpace: "nowrap",
@@ -399,7 +401,7 @@ export default function PublicPage() {
                           flexShrink: 0,
                         }}
                       >
-                        {isPdf ? "📄 Ver edital" : "🔗 Ver notícia"}
+                        {isPdf ? "📄 Ver edital" : isSiteOficial ? "🌐 Site do concurso" : "🔗 Ver notícia"}
                       </a>
                     </div>
                   </div>
