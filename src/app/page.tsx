@@ -358,16 +358,20 @@ export default function PublicPage() {
                       </div>
 
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                        <span className="tag-sal" style={{
-                          background: "rgba(0,200,150,.08)", border: "1px solid rgba(0,200,150,.15)",
-                          color: "#00C896", padding: "3px 9px", borderRadius: 7,
-                          fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
-                        }}>{c.salario}</span>
-                        <span style={{
-                          background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.15)",
-                          color: "#A78BFA", padding: "3px 9px", borderRadius: 7,
-                          fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
-                        }}>{c.vagas}</span>
+                        {c.salario !== "Ver edital" && (
+                          <span className="tag-sal" style={{
+                            background: "rgba(0,200,150,.08)", border: "1px solid rgba(0,200,150,.15)",
+                            color: "#00C896", padding: "3px 9px", borderRadius: 7,
+                            fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
+                          }}>{c.salario}</span>
+                        )}
+                        {c.vagas !== "Ver edital" && (
+                          <span style={{
+                            background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.15)",
+                            color: "#A78BFA", padding: "3px 9px", borderRadius: 7,
+                            fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
+                          }}>{c.vagas}</span>
+                        )}
                         <span style={{
                           background: (STATUS_DOT[c.status] ?? "#888") + "15",
                           border: "1px solid " + (STATUS_DOT[c.status] ?? "#888") + "30",
@@ -385,14 +389,13 @@ export default function PublicPage() {
                         rel="noreferrer"
                         className="edital-link"
                         style={{
-                          background: isPdf ? "rgba(0,200,150,.08)" : "rgba(255,255,255,.04)",
-                          border: isPdf ? "1px solid rgba(0,200,150,.2)" : "1px solid rgba(255,255,255,.08)",
-                          color: isPdf ? "#00C896" : "rgba(255,255,255,.4)",
+                          background: isPdf ? "rgba(0,200,150,.08)" : "rgba(167,139,250,.08)",
+                          border: isPdf ? "1px solid rgba(0,200,150,.2)" : "1px solid rgba(167,139,250,.2)",
+                          color: isPdf ? "#00C896" : "#A78BFA",
                           borderRadius: 9, padding: "8px 14px",
                           fontSize: 12, fontWeight: 700,
                           textDecoration: "none", whiteSpace: "nowrap",
                           transition: "all .15s",
-                          opacity: .85,
                           flexShrink: 0,
                         }}
                       >

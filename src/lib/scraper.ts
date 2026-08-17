@@ -1024,6 +1024,12 @@ export async function scrapeListagem(url: string, ehPaginaDeNoticias = false): P
 
   const linhasGeral = textoCompleto.split("\n").map(l => l.trim()).filter(Boolean);
 
+  // Cursor de busca: avança a cada link processado para evitar que dois editais
+  // do MESMO órgão (ex.: Taubaté edital 01/2026 "Contador" e edital 02/2026
+  // "Auditor Fiscal") colidam no primeiro bloco de texto encontrado via
+  // findIndex — o que fazia o segundo link herdar cargo/vagas/prazo do primeiro.
+  let buscaDesde = 0;
+
   for (const { href, orgao, title } of links) {
     const ufDoTitle = title.match(/\s+-\s+([A-Z]{2})\s+/)?.[1] ?? "Nacional";
 
@@ -1045,8 +1051,12 @@ export async function scrapeListagem(url: string, ehPaginaDeNoticias = false): P
     // Ex: "Arquiteto e Urbanista, Contador, Assistente Administrativo - ICMBio - CE"
     const titleTemContabil = CARGO_CONTABIL_KW.some(kw => title.toLowerCase().includes(kw));
 
-    const idxOrgao = linhasGeral.findIndex(l => l === orgao);
+    let idxOrgao = linhasGeral.indexOf(orgao, buscaDesde);
+    // Fallback: se não achar a partir do cursor (ordem inesperada), tenta desde o início
+    // só desta vez, sem travar o cursor para os próximos links.
+    if (idxOrgao === -1) idxOrgao = linhasGeral.indexOf(orgao);
     if (idxOrgao === -1) continue;
+    buscaDesde = idxOrgao + 1;
 
     const bloco     = linhasGeral.slice(idxOrgao, idxOrgao + 8);
     const blocoTexto = bloco.join(" ");
