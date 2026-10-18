@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.npm-cache/
+*.tsbuildinfo
+preview-*.cjs
+auditar-*.cjs
+tests/fixtures/pci-analista.html
+.env*
+!.env.example

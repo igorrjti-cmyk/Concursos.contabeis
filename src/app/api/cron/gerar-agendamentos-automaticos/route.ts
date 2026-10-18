@@ -1,3 +1,4 @@
+import { atualizarPrazo } from "@/lib/concurso-dados";
 // src/app/api/cron/gerar-agendamentos-automaticos/route.ts
 // Cron diário — roda LOGO DEPOIS de "atualizar-concursos".
 // Detecta concursos novos (mesmo critério do cron de notificações: nunca
@@ -45,7 +46,7 @@ export async function GET(req: Request) {
       .eq("chave", "concursos:v20")
       .single<{ dados: { concursos: Concurso[] } }>();
 
-    const concursos = cacheRow?.dados?.concursos ?? [];
+    const concursos = (cacheRow?.dados?.concursos ?? []).map(c=>atualizarPrazo(c));
     if (concursos.length === 0) {
       return NextResponse.json({ ok: true, message: "Cache vazio — nada para agendar" });
     }
@@ -65,7 +66,7 @@ export async function GET(req: Request) {
     // Só considera concursos com inscrições realmente abertas — evita
     // agendar posts de concursos já encerrados ou apenas previstos.
     const candidatos = concursos.filter(
-      c => !idsJaVistos.has(c.id) && c.status === "Inscricoes Abertas"
+      c => c.dadosValidados && !idsJaVistos.has(c.id) && c.status === "Inscricoes Abertas"
     );
 
     // Prioriza os que encerram mais cedo (mais relevante divulgar primeiro).

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Concurso } from "@/lib/scraper";
-import { UF_NOMES } from "@/lib/scraper";
+import { UF_NOMES } from "@/lib/ufs";
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -16,6 +16,7 @@ function useDebounce<T>(value: T, delay: number): T {
 const STATUS_DOT: Record<string, string> = {
   "Inscricoes Abertas": "#00C896",
   "Aguardando Prova":   "#A78BFA",
+  "Inscricoes em breve": "#FFB800",
   "Previsto":           "#FFB800",
   "Encerrado":          "#FF4B4B",
 };
@@ -23,6 +24,7 @@ const STATUS_DOT: Record<string, string> = {
 const STATUS_LABEL: Record<string, string> = {
   "Inscricoes Abertas": "Inscrições Abertas",
   "Aguardando Prova":   "Aguardando Prova",
+  "Inscricoes em breve": "Inscrições em breve",
   "Previsto":           "Previsto",
   "Encerrado":          "Encerrado",
 };
@@ -30,7 +32,7 @@ const STATUS_LABEL: Record<string, string> = {
 const UFS = ["Todos","AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO","Nacional"];
 const NIVEIS = ["Todos", "Superior", "Médio/Técnico", "Médio/Técnico/Superior"];
 
-type FilterStatus = "todos" | "Inscricoes Abertas" | "Aguardando Prova";
+type FilterStatus = "todos" | "Inscricoes Abertas" | "Aguardando Prova" | "Inscricoes em breve";
 type SortBy = "padrao" | "salario" | "vagas" | "prazo";
 
 function nivelDisplay(cargo: string, nivel: string): string {
@@ -74,6 +76,7 @@ export default function PublicPage() {
   const [filter, setFilter]       = useState<FilterStatus>("todos");
   const [estadoFiltro, setEstadoFiltro] = useState("Todos");
   const [nivelFiltro, setNivelFiltro]   = useState("Todos");
+  const [areaFiltro,setAreaFiltro] = useState("Todos");
   const [sortBy, setSortBy]       = useState<SortBy>("padrao");
   const [salarioMin, setSalarioMin] = useState(0);
   const [atualizadoEm, setAtualizadoEm] = useState("");
@@ -105,8 +108,9 @@ export default function PublicPage() {
           if (dtP < hojeMs) return false;
         }
       }
+      if (areaFiltro !== "Todos" && c.relevancia !== areaFiltro) return false;
       if (filter !== "todos" && c.status !== filter) return false;
-      if (estadoFiltro !== "Todos" && c.estado !== estadoFiltro) return false;
+      if (estadoFiltro !== "Todos" && !(c.estados || c.estado.split("/")).includes(estadoFiltro)) return false;
       if (nivelFiltro !== "Todos") {
         const nivelNorm = nivelDisplay(c.cargo, c.nivel);
         if (nivelFiltro === "Superior") {
@@ -214,6 +218,7 @@ export default function PublicPage() {
         background: "rgba(255,255,255,.01)",
       }}>
         <input
+          aria-label="Buscar concursos"
           value={busca}
           onChange={e => setBusca(e.target.value)}
           placeholder="🔎  Buscar cargo, órgão ou estado..."
@@ -224,7 +229,7 @@ export default function PublicPage() {
             transition: "border-color .2s",
           }}
         />
-        {(["todos", "Inscricoes Abertas", "Aguardando Prova"] as FilterStatus[]).map(f => (
+        {(["todos", "Inscricoes Abertas", "Inscricoes em breve", "Aguardando Prova"] as FilterStatus[]).map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{
             background: filter === f ? "rgba(0,200,150,.1)" : "transparent",
             border: "1px solid " + (filter === f ? "#00C896" : "rgba(255,255,255,.1)"),
@@ -233,10 +238,13 @@ export default function PublicPage() {
             cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
             transition: "all .15s",
           }}>
-            {f === "todos" ? "Todos" : f === "Inscricoes Abertas" ? "Inscrições Abertas" : "Aguardando Prova"}
+            {f === "todos" ? "Todos" : f === "Inscricoes Abertas" ? "Inscrições Abertas" : f === "Inscricoes em breve" ? "Em breve" : "Aguardando Prova"}
           </button>
         ))}
-        <select value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)} style={{
+        <select aria-label="Filtrar por área de interesse" value={areaFiltro} onChange={e=>setAreaFiltro(e.target.value)} style={{background:"#0C1E3E",color:"#fff",border:"1px solid rgba(255,255,255,.1)",borderRadius:9,padding:"7px 10px",fontSize:11}}>
+          <option value="Todos">Todas as áreas</option><option value="cargo-contabil">Cargos contábeis</option><option value="formacao-contabil">Aceita Ciências Contábeis</option><option value="area-fiscal">Área fiscal e controle</option>
+        </select>
+        <select aria-label="Filtrar por estado" value={estadoFiltro} onChange={e => setEstadoFiltro(e.target.value)} style={{
           background: "#0C1E3E", border: "1px solid rgba(255,255,255,.1)",
           color: "rgba(255,255,255,.6)", borderRadius: 9, padding: "7px 10px",
           fontSize: 11, cursor: "pointer",
@@ -247,7 +255,7 @@ export default function PublicPage() {
             </option>
           ))}
         </select>
-        <select value={nivelFiltro} onChange={e => setNivelFiltro(e.target.value)} style={{
+        <select aria-label="Filtrar por escolaridade" value={nivelFiltro} onChange={e => setNivelFiltro(e.target.value)} style={{
           background: "#0C1E3E", border: "1px solid rgba(255,255,255,.1)",
           color: "rgba(255,255,255,.6)", borderRadius: 9, padding: "7px 10px",
           fontSize: 11, cursor: "pointer",
@@ -258,7 +266,7 @@ export default function PublicPage() {
             </option>
           ))}
         </select>
-        <select value={sortBy} onChange={e => setSortBy(e.target.value as SortBy)} style={{
+        <select aria-label="Ordenar concursos" value={sortBy} onChange={e => setSortBy(e.target.value as SortBy)} style={{
           background: "#0C1E3E", border: "1px solid rgba(255,255,255,.1)",
           color: "rgba(255,255,255,.6)", borderRadius: 9, padding: "7px 10px",
           fontSize: 11, cursor: "pointer",
@@ -268,7 +276,7 @@ export default function PublicPage() {
           <option value="salario">💰 Maior salário</option>
           <option value="vagas">🎯 Mais vagas</option>
         </select>
-        <select value={salarioMin} onChange={e => setSalarioMin(Number(e.target.value))} style={{
+        <select aria-label="Filtrar por salário mínimo" value={salarioMin} onChange={e => setSalarioMin(Number(e.target.value))} style={{
           background: "#0C1E3E", border: "1px solid rgba(255,255,255,.1)",
           color: salarioMin > 0 ? "#00C896" : "rgba(255,255,255,.6)",
           borderRadius: 9, padding: "7px 10px", fontSize: 11, cursor: "pointer",
@@ -347,7 +355,10 @@ export default function PublicPage() {
                           <span title={c.cargo} style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>
                             {c.cargo}
                           </span>
-                          <BadgeUrgente dias={c.diasRestantes} />
+                          {c.relevancia && <span style={{fontSize:10,color:"#A78BFA"}} title={c.requisito}>
+                            {c.relevancia === "formacao-contabil" ? "Aceita Ciências Contábeis" : c.relevancia === "area-fiscal" ? "Área fiscal e controle: confira a formação" : "Cargo contábil"}
+                          </span>}
+                          {c.status === "Inscricoes Abertas" && <BadgeUrgente dias={c.diasRestantes} />}
                           {temProva && (
                             <span style={{ background: "rgba(167,139,250,.1)", color: "#A78BFA", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>
                               📝 Prova: {c.dataProva}
@@ -367,13 +378,13 @@ export default function PublicPage() {
                           color: c.salario !== "Ver edital" ? "#00C896" : "rgba(0,200,150,.5)",
                           padding: "3px 9px", borderRadius: 7,
                           fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
-                        }}>{c.salario !== "Ver edital" ? c.salario : "Salário a definir"}</span>
+                        }}>{c.salario !== "Ver edital" ? c.salario : "Salário: consultar edital"}</span>
                         <span style={{
                           background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.15)",
                           color: c.vagas !== "Ver edital" ? "#A78BFA" : "rgba(167,139,250,.5)",
                           padding: "3px 9px", borderRadius: 7,
                           fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
-                        }}>{c.vagas !== "Ver edital" ? c.vagas : "Vagas a definir"}</span>
+                        }}>{c.vagas !== "Ver edital" ? c.vagas : "Vagas: consultar edital"}</span>
                         <span style={{
                           background: (STATUS_DOT[c.status] ?? "#888") + "15",
                           border: "1px solid " + (STATUS_DOT[c.status] ?? "#888") + "30",
@@ -403,6 +414,7 @@ export default function PublicPage() {
                       >
                         {isPdf ? "📄 Ver edital" : isSiteOficial ? "🌐 Site do concurso" : "🔗 Ver notícia"}
                       </a>
+                      {c.linkNoticia && c.linkNoticia !== c.linkEdital && <a href={c.linkNoticia} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#A78BFA",whiteSpace:"nowrap"}}>Fonte no PCI</a>}
                     </div>
                   </div>
                 );
@@ -420,7 +432,7 @@ export default function PublicPage() {
         fontSize: 11,
         marginTop: 40,
       }}>
-        Concursos Contábeis · Fonte: pciconcursos.com.br · Siga @concursos.contabeis no Instagram
+        Concursos Contábeis · Fonte: pciconcursos.com.br · Confira requisitos, horários e retificações no edital oficial.
       </footer>
     </div>
   );

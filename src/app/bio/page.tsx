@@ -10,8 +10,8 @@ interface BioItem {
   posted_at: string; ativo: boolean;
 }
 
-const STATUS_COLOR: Record<string,string> = {"Inscricoes Abertas":"#00C896","Aguardando Prova":"#A78BFA","Previsto":"#FFB800","Encerrado":"#555"};
-const STATUS_LABEL: Record<string,string> = {"Inscricoes Abertas":"Inscrições Abertas","Aguardando Prova":"Aguardando Prova","Previsto":"Previsto","Encerrado":"Encerrado"};
+const STATUS_COLOR: Record<string,string> = {"Inscricoes Abertas":"#00C896","Aguardando Prova":"#A78BFA","Inscricoes em breve":"#FFB800","Previsto":"#FFB800","Encerrado":"#555"};
+const STATUS_LABEL: Record<string,string> = {"Inscricoes Abertas":"Inscrições Abertas","Aguardando Prova":"Aguardando Prova","Inscricoes em breve":"Inscrições em breve","Previsto":"Previsto","Encerrado":"Encerrado"};
 const ESTADOS = ["Todos","AC","AL","AM","AP","BA","CE","DF","ES","GO","MA","MG","MS","MT","PA","PB","PE","PI","PR","RJ","RN","RO","RR","RS","SC","SE","SP","TO","Nacional"];
 
 export default function BioPage() {

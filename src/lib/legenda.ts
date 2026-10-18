@@ -1,5 +1,8 @@
+import { atualizarPrazo } from "./concurso-dados";
 // src/lib/legenda.ts
-import { Concurso, statusDisplay, UF_NOMES } from "./scraper";
+import type { Concurso } from "./scraper";
+import { statusDisplay } from "./concurso-dados";
+import { UF_NOMES } from "./ufs";
 
 const EMOJI_BANCA: Record<string, string> = {
   CESPE: "⚡", CEBRASPE: "⚡", FGV: "🏛", FCC: "📘",
@@ -19,10 +22,10 @@ const ESTADO_HASHTAG: Record<string, string> = {
   Nacional: "#concursonacional",
 };
 
-function categoriaPost(c: Concurso): "federal" | "estadual" | "municipal" {
+function categoriaPost(c: Concurso): "federal" | "estadual" | "municipal" | "indefinido" {
   const org = c.orgao.toUpperCase();
   if (
-    org.includes("FEDERAL") || org.includes("TCU") || org.includes("CGU") ||
+    org.includes("FEDERAL") || /\b(?:TRT|TRF|TRE|TSE|TST|STM)\b/.test(org) || org.includes("TCU") || org.includes("CGU") ||
     org.includes("STF") || org.includes("STJ") || org.includes("RECEITA FEDERAL") ||
     org.includes("INSS") || c.estado === "Nacional"
   ) return "federal";
@@ -31,7 +34,7 @@ function categoriaPost(c: Concurso): "federal" | "estadual" | "municipal" {
     org.includes("TRIBUNAL DE JUSTICA") || org.includes("TJ") || org.includes("TRF") ||
     org.includes("TCE") || org.includes("MP ") || org.includes("MINISTERIO PUBLICO")
   ) return "estadual";
-  return "municipal";
+  return /PREFEITURA|CÂMARA|CAMARA|MUNICIPAL/.test(org) ? "municipal" : "indefinido";
 }
 
 function chamadaParaAcao(c: Concurso): string {
@@ -40,7 +43,7 @@ function chamadaParaAcao(c: Concurso): string {
   const dias  = c.diasRestantes;
 
   if (cargo.includes("auditor") || cargo.includes("fiscal tribut") || cargo.includes("fiscal de tribut")) {
-    return "Auditor Fiscal é um dos cargos mais cobiçados da Contabilidade. Não perca esse edital!";
+    return "Confira os requisitos de formação e as atribuições de " + c.cargo + " no edital.";
   }
   if (cat === "federal") {
     return "Concurso Federal com excelente remuneração e estabilidade. Vale muito a preparação!";
@@ -55,9 +58,9 @@ function chamadaParaAcao(c: Concurso): string {
     return "Oportunidade estadual com boa remuneração. Confira os requisitos no edital!";
   }
   if (cargo.includes("técnico") || cargo.includes("tecnico")) {
-    return "Vaga para Técnico em Contabilidade com CRC ativo. Compartilhe com quem se encaixa!";
+    return "Confira no edital a formação e o registro profissional exigidos para este cargo.";
   }
-  return "Boa oportunidade para quem tem formação em Ciências Contábeis. Compartilhe com quem precisa!";
+  return "Confira a formação exigida, os prazos e as retificações na fonte oficial.";
 }
 
 /** Normaliza texto para hashtag: remove acentos, espaços e caracteres especiais */
@@ -130,10 +133,11 @@ function gerarHashtags(c: Concurso): string {
 }
 
 export function gerarLegenda(c: Concurso): string {
+  c = atualizarPrazo(c);
   const bancaEmoji = Object.entries(EMOJI_BANCA)
     .find(([k]) => c.banca.toUpperCase().includes(k))?.[1] ?? "";
 
-  const urgente      = c.diasRestantes >= 0 && c.diasRestantes <= 7;
+  const urgente      = c.status === "Inscricoes Abertas" && c.diasRestantes >= 0 && c.diasRestantes <= 7;
   const temProva     = c.dataProva     && c.dataProva     !== "-";
   const temResultado = c.dataResultado && c.dataResultado !== "-";
 
@@ -161,8 +165,8 @@ export function gerarLegenda(c: Concurso): string {
     `📍 Órgão: ${c.orgao}\n` +
     `🗺 Estado: ${c.cidade ? c.cidade + "/" : ""}${c.estado}\n` +
     `🎓 Nível: ${c.nivel}\n` +
-    `🎯 Vagas: ${c.vagas !== "Ver edital" ? c.vagas : "a definir no edital"}\n` +
-    `💰 Salário: ${c.salario !== "Ver edital" ? c.salario : "a definir no edital"}\n` +
+    `🎯 Vagas: ${c.vagas !== "Ver edital" ? c.vagas : "consultar edital"}\n` +
+    `💰 Salário: ${c.salario !== "Ver edital" ? c.salario : "consultar edital"}\n` +
     `${bancaEmoji ? bancaEmoji + " " : ""}🏦 Banca: ${c.banca}\n` +
     `📅 Inscrições: ${c.inscricao !== "-" ? c.inscricao : "até " + c.inscricaoAte}` +
     linhaProva +
@@ -170,7 +174,7 @@ export function gerarLegenda(c: Concurso): string {
     "\n\n" +
     chamadaParaAcao(c) +
     "\n\n" +
-    `🔗 Edital no link da bio ou:\n${c.linkEdital || c.linkNoticia}` +
+    `🔗 Fonte e informações oficiais:\n${c.linkEdital || c.linkNoticia}` +
     "\n\n" +
     "💾 SALVE para não perder o prazo!\n" +
     "🏷️ MARQUE um colega da Contabilidade!\n" +

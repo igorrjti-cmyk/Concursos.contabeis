@@ -53,13 +53,13 @@ test('the specialty stays visible on both feed and stories cards', () => {
 test('PCI discovery does not mistake Técnico in the job name for schooling', async () => {
   const { scrapeListagem } = require('../src/lib/scraper.ts');
   const originalFetch = global.fetch;
-  global.fetch = async () => new Response(fs.readFileSync(path.join(__dirname, 'fixtures/pci-trt8-listagem.html'), 'utf8'));
+  global.fetch = async () => new Response('<div id="concursos">'+fs.readFileSync(path.join(__dirname, 'fixtures/pci-trt8-listagem.html'), 'utf8')+'</div>');
   try {
     const [item] = await scrapeListagem('/vagas/analista-judiciario');
     assert.ok(item);
     assert.equal(item.inscricaoAte, '05/11/2026');
     assert.match(item.nivel, /Superior/);
-    assert.equal(item.vagas, 'Cadastro Reserva');
+    assert.equal(item.vagas, 'Ver edital'); // summary is for all roles, not the accountant
   } finally { global.fetch = originalFetch; }
 });
 

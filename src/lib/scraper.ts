@@ -1,3 +1,5 @@
+import { lerListagemPCI, lerNoticiaPCI } from "./pci-parser";
+import { montarConcursos, normalizar, tipoRelevancia, diaNumero, hojeBrasil } from "./concurso-dados";
 import { extrairEspecialidadesContabeis, extrairDetalhesEspecialidade } from "./especialidades-contabeis";
 // src/lib/scraper.ts
 // Nota: extrairDetalhesDoPDF é importado dinamicamente em scrapeDetalhe
@@ -13,6 +15,13 @@ import { extrairEspecialidadesContabeis, extrairDetalhesEspecialidade } from "./
 
 export interface Concurso {
   id: string;
+  estados?: string[];
+  inscricaoInicio?: string;
+  inscricaoFimHora?: string;
+  requisito?: string;
+  relevancia?: "cargo-contabil" | "formacao-contabil" | "area-fiscal";
+  evidenciaCargo?: string;
+  dadosValidados?: boolean;
   cargo: string;          // cargo principal (ex: "Contador")
   cargosContabeis: string[]; // todos os cargos contábeis encontrados no edital
   orgao: string;
@@ -30,12 +39,13 @@ export interface Concurso {
   nivel: string;
   dataProva: string;
   dataResultado: string;
-  status: "Inscricoes Abertas" | "Aguardando Prova" | "Previsto" | "Encerrado";
+  status: "Inscricoes Abertas" | "Aguardando Prova" | "Previsto" | "Inscricoes em breve" | "Encerrado";
   dataCaptura: string;
 }
 
 export function statusDisplay(s: string): string {
   if (s === "Inscricoes Abertas") return "Inscrições Abertas";
+  if (s === "Inscricoes em breve") return "Inscrições em breve";
   if (s === "Aguardando Prova")   return "Aguardando Prova";
   return s;
 }
@@ -148,6 +158,7 @@ const DOMINIO_BANCA: Record<string, string> = {
   "cebraspe.org.br":        "CEBRASPE",
   "cespe.unb.br":           "CESPE",
   "fgv.br":                 "FGV",
+  "cesgranrio.org.br":      "CESGRANRIO",
   "concursosfcc.com.br":    "FCC",
   "vunesp.com.br":          "VUNESP",
   "ibfc.org.br":            "IBFC",
@@ -274,15 +285,8 @@ const AREAS_EXCLUIDAS_TITLE = [
 ];
 
 // ─── Mapa UF → nome completo do estado ───────────────────────────────────────
-export const UF_NOMES: Record<string, string> = {
-  AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas",
-  BA: "Bahia", CE: "Ceará", DF: "Distrito Federal", ES: "Espírito Santo",
-  GO: "Goiás", MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul",
-  MG: "Minas Gerais", PA: "Pará", PB: "Paraíba", PR: "Paraná",
-  PE: "Pernambuco", PI: "Piauí", RJ: "Rio de Janeiro", RN: "Rio Grande do Norte",
-  RS: "Rio Grande do Sul", RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina",
-  SP: "São Paulo", SE: "Sergipe", TO: "Tocantins", Nacional: "Nacional",
-};
+export { UF_NOMES } from "./ufs";
+import { UF_NOMES } from "./ufs";
 
 /**
  * Extrai a cidade a partir do nome do órgão ou do título da notícia.
@@ -727,6 +731,10 @@ function extrairCargosContabeisDoEdital(texto: string): string[] {
 // ─── Extração de detalhes do edital ───────────────────────────────────────────
 
 export interface DetalhesEdital {
+  inscricao?: string;
+  inscricaoInicio?: string;
+  inscricaoAte?: string;
+  inscricaoFimHora?: string;
   dataProva: string;
   dataResultado: string;
   banca: string;
@@ -734,7 +742,7 @@ export interface DetalhesEdital {
   cargosContabeis: string[];
   requisito: string;
   ehProcessoSeletivo: boolean;
-  cargosDetalhados?: { cargo: string; vagas: string; salario: string; nivel: string; requisito: string }[];
+  cargosDetalhados?: { cargo: string; vagas: string; salario: string; nivel: string; requisito: string; evidencia?: string; estados?: string[] }[];
   textoHtml?: string; // texto completo do HTML da notícia para fallback de cargo
 }
 
@@ -977,207 +985,10 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
 
 // ─── Scraping da listagem ─────────────────────────────────────────────────────
 
-export async function scrapeListagem(url: string, ehPaginaDeNoticias = false): Promise<Partial<Concurso>[]> {
+export async function scrapeListagem(url: string, _ehPaginaDeNoticias = false): Promise<Partial<Concurso>[]> {
   const html = await fetchComTimeout(BASE_URL + url);
-  if (!html) return [];
-
-  const cheerio = await import("cheerio");
-  const $ = cheerio.load(html);
-  const items: Partial<Concurso>[] = [];
-
-  type LinkInfo = { href: string; orgao: string; title: string };
-  const links: LinkInfo[] = [];
-
-  $("a[href*='/noticias/']").each((_, el) => {
-    const href  = $(el).attr("href") || "";
-    const title = $(el).attr("title") || "";
-    const texto = $(el).text().trim();
-    if (!href.match(/\/noticias\/[a-z0-9][a-z0-9-]{10,}/)) return;
-    if (!title.includes(" - ")) return;
-    if (!texto || texto.length < 4 || texto.length > 80) return;
-    if (texto === title) return;
-
-
-
-    // ── Aceita apenas CONCURSO PÚBLICO — descarta processo seletivo ──────────
-    const titleLow = title.toLowerCase();
-    const hrefLow  = href.toLowerCase();
-    const ehPS =
-      titleLow.includes("processo seletivo") ||
-      titleLow.includes("processo simplificado") ||
-      titleLow.includes("seleção simplificada") ||
-      titleLow.includes("selecao simplificada") ||
-      titleLow.includes("seletivo simplificado") ||
-      titleLow.includes("contratação temporária") ||
-      titleLow.includes("contratacao temporaria") ||
-      titleLow.includes("credenciamento") ||
-      / pss[\s,.]/.test(titleLow) || titleLow.endsWith(" pss") ||
-      / pst[\s,.]/.test(titleLow) || titleLow.endsWith(" pst") ||
-      hrefLow.includes("processo-seletivo") ||
-      hrefLow.includes("processo-simplificado") ||
-      hrefLow.includes("selecao-simplificada") ||
-      hrefLow.includes("seletivo-simplificado");
-    if (ehPS) return;
-
-    links.push({ href: href.startsWith("http") ? href : BASE_URL + href, orgao: texto, title });
-  });
-
-  if (links.length === 0) return [];
-
-  const $conteudo = $("main, #content, .content, article, #main").first();
-  const textoCompleto = ($conteudo.length ? $conteudo : $("body"))
-    .text().replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-
-  const linhasGeral = textoCompleto.split("\n").map(l => l.trim()).filter(Boolean);
-
-  // Cursor de busca: avança a cada link processado para evitar que dois editais
-  // do MESMO órgão (ex.: Taubaté edital 01/2026 "Contador" e edital 02/2026
-  // "Auditor Fiscal") colidam no primeiro bloco de texto encontrado via
-  // findIndex — o que fazia o segundo link herdar cargo/vagas/prazo do primeiro.
-  let buscaDesde = 0;
-
-  for (const { href, orgao, title } of links) {
-    const ufDoTitle = title.match(/\s+-\s+([A-Z]{2})\s+/)?.[1] ?? "Nacional";
-
-    const cargoDoTitle = (() => {
-      // Tenta extrair cargo do padrão "para Cargo em Órgão"
-      // Ex: "publica edital para Contador e Economista" → "Contador e Economista"
-      // Ex: "abre concurso para o cargo de Contador" → "Contador" (sem o "de")
-      const m = title.match(/\b(?:para\s+(?:o\s+cargo\s+de\s+|os?\s+cargos?\s+de\s+)?|ao\s+cargo\s+de\s+|vagas?\s+(?:de\s+|para\s+)|edital\s+para\s+)(.{3,80}?)(?:\s+e\s+(?:agente|analista|assistente|auxiliar|procurad|advogad)|\s+em\s+|\s+com\s+|\s+no\s+|\s+na\s+|\s+sob\s+|\s+-\s+|$)/i);
-      if (m) {
-        const c = m[1].trim().replace(/\s+$/, "").replace(/^(de|do|da|e|o|a)\s+/i, "");
-        if (c.length >= 3 && c.length < 80
-          && !c.toLowerCase().includes("concurso")
-          && !c.toLowerCase().includes("selecao")) return c;
-      }
-      return null;
-    })();
-
-    // Verifica se o título lista cargos contábeis explicitamente
-    // Ex: "Arquiteto e Urbanista, Contador, Assistente Administrativo - ICMBio - CE"
-    const titleTemContabil = CARGO_CONTABIL_KW.some(kw => title.toLowerCase().includes(kw));
-
-    let idxOrgao = linhasGeral.indexOf(orgao, buscaDesde);
-    // Fallback: se não achar a partir do cursor (ordem inesperada), tenta desde o início
-    // só desta vez, sem travar o cursor para os próximos links.
-    if (idxOrgao === -1) idxOrgao = linhasGeral.indexOf(orgao);
-    if (idxOrgao === -1) continue;
-    buscaDesde = idxOrgao + 1;
-
-    const bloco     = linhasGeral.slice(idxOrgao, idxOrgao + 8);
-    const blocoTexto = bloco.join(" ");
-
-    // O PCI une vagas+salário+cargo em UMA linha sem espaços:
-    // "[94] 10 vagas até R$ 5.409,87Vários CargosMédio / Superior"
-    // "[102] 4 vagas até R$ 6.093,47Contador, EconomistaSuperior"
-    // "[linha] 3 vagas + CR até R$ 2.043,00Auxiliar de Serviços Gerais, ContadorFundamental"
-    // Procura a linha específica que contém "vagas ... R$"
-    // Usa [$] para o cifrão e [^R]+ para evitar problemas de encoding/escape
-    const linhaVagas = bloco.find(l =>
-      /(\d+\s+vagas?(?:\s*[+]\s*CR)?|cadastro\s+reserva)[^R]+R[$]/i.test(l)
-    ) ?? "";
-
-    if (!linhaVagas) continue; // sem linha de vagas — não é entrada válida
-
-    // Usa [^R]+ e [$] para robustez máxima contra encoding
-    const vagasMatch = linhaVagas.match(
-      /(\d+\s+vagas?(?:\s*[+]\s*CR)?|cadastro\s+reserva)[^R]+R[$]\s*([\d.,]+)/i
-    );
-    if (!vagasMatch) continue;
-
-    const vagasStr   = vagasMatch[1].replace(/\s+/g, " ").trim();
-    const salarioStr = "R$ " + vagasMatch[2];
-
-    // Cargo vem colado após o número do salário na MESMA linha
-    const semVagas = linhaVagas.replace(
-      /(\d+\s+vagas?(?:\s*[+]\s*CR)?|cadastro\s+reserva)[^R]+R[$]\s*[\d.,]+/i, ""
-    ).trim();
-    // O que resta: "Vários CargosMédio / Superior" ou "Contador, EconomistaSuperior"
-    const mCargo = semVagas.match(/^(.+?)(?=Fundamental|M[eé]dio|Superior|T[eé]cnico|$)/i);
-    const cargoNaLinha = (() => {
-      const c = mCargo?.[1]?.trim().replace(/,$/, "").trim() ?? "";
-      // Rejeita se for só "Vários Cargos" ou vazio
-      return c.length > 1 && c.length < 100 && !/^v[aá]rios\s+cargos$/i.test(c) ? c : "";
-    })();
-
-    // Cargo — prioridade: 1) extraído da linha de vagas, 2) do título, 3) busca no bloco
-    let cargo = cargoNaLinha || cargoDoTitle || "Vários Cargos";
-
-    // Se ainda "Vários Cargos", tenta encontrar cargo contábil direto no bloco de texto
-    if (cargo === "Vários Cargos") {
-      for (const kw of CARGO_CONTABIL_KW) {
-        // Busca a keyword no bloco e extrai o trecho como nome do cargo
-        const re = new RegExp(`((?:[A-ZÁÉÍÓÚ][a-záéíóúâêîôûãõç]+ ?){1,4}${kw.replace(/\s+/g,"\\s+")}(?:\\s+[a-záéíóúâêîôûãõç]+){0,3})`, "i");
-        const m = blocoTexto.match(re) || textoCompleto.substring(Math.max(0, idxOrgao * 5 - 200), idxOrgao * 5 + 500).match(re);
-        if (m?.[1]) {
-          const candidato = m[1].trim();
-          if (candidato.length >= 4 && candidato.length <= 60) {
-            cargo = normalizarNomeCargo(candidato);
-            break;
-          }
-        }
-      }
-    }
-
-    // Nível
-    const nivelMatch = linhaVagas.match(
-      /((?:Fundamental|M[eé]dio|Superior|T[eé]cnico)(?:\s*\/\s*(?:Fundamental|M[eé]dio|Superior|T[eé]cnico))*)\s*$/i
-    );
-    const nivelRaw = nivelMatch ? nivelMatch[1] : "";
-
-    // Período de inscrição
-    // Data vem sem espaço: "25/05 a25/06/2026" — busca na linha específica de data
-    const linhaData = bloco.find(l => /\d{2}\/\d{2}.*\d{2}\/\d{2}\/\d{4}/.test(l)) ?? "";
-    // Aceita "25/05 a25/06/2026", "25/05 a 25/06/2026", "25/05a25/06/2026"
-    const reData = /(\d{2}\/\d{2}(?:\/\d{4})?)\s*a\s*(\d{2}\/\d{2}\/\d{4})/;
-    const periodoMatch   = linhaData.match(reData) || blocoTexto.match(reData);
-    const dataUnicaMatch = linhaData.match(/(\d{2}\/\d{2}\/\d{4})/) ||
-                           blocoTexto.match(/(\d{2}\/\d{2}\/\d{4})/);
-
-    let inscricao    = "-";
-    let inscricaoAte = "Ver edital";
-
-    if (periodoMatch) {
-      const anoFim = periodoMatch[2].split("/")[2];
-      const inicio = periodoMatch[1].includes("/20") ? periodoMatch[1] : periodoMatch[1] + "/" + anoFim;
-      inscricao    = inicio + " a " + periodoMatch[2];
-      inscricaoAte = periodoMatch[2];
-    } else if (dataUnicaMatch) {
-      inscricao    = dataUnicaMatch[1];
-      inscricaoAte = dataUnicaMatch[1];
-    }
-
-    // Filtro contábil — verifica cargo da linha, título e orgão
-    const nivelSuperior = nivelRaw.toLowerCase().includes("superior");
-    // "Vários Cargos" sempre passa — o filtro real acontece no scrapeDetalhe via cargosContabeis
-    const ehVariosCargos = cargo.toLowerCase().includes("vários cargos") || cargo.toLowerCase().includes("varios cargos");
-    const cargoGenerico = CARGO_GENERICO_CONTABIL_KW.some(kw => cargo.toLowerCase().includes(kw));
-    // Concursos públicos multi-cargo (de páginas de notícias) passam para detalhe:
-    // ex: "IPAM de Caxias do Sul" não menciona contador no título mas tem no edital
-    const ehConcursoPublicoMulticargo = (nivelSuperior || nivelRaw.toLowerCase().includes("técnico") || nivelRaw.toLowerCase().includes("tecnico"))
-      && (title.toLowerCase().includes("concurso público") || title.toLowerCase().includes("concurso publico"))
-      && ehPaginaDeNoticias;
-    const passaParaDetalhe = (nivelSuperior && cargoGenerico) || ehVariosCargos || titleTemContabil || ehConcursoPublicoMulticargo;
-    if (!ehConcursoContabil(cargo, title, orgao) && !passaParaDetalhe) continue;
-
-    const cidadeExtraida = extrairCidade(orgao, title, ufDoTitle);
-    items.push({
-      id:            slugify(cargo + "-" + orgao),
-      orgao, estado: ufDoTitle,
-      cidade: cidadeExtraida,
-      uf: UF_NOMES[ufDoTitle] ?? ufDoTitle,
-      vagas: vagasStr, salario: salarioStr,
-      cargo, nivel: detectNivel(nivelRaw, cargo), inscricao, inscricaoAte,
-      diasRestantes: calcDiasRestantes(inscricaoAte),
-      linkNoticia: href, linkEdital: href, banca: "-",
-      dataProva: "-", dataResultado: "-",
-      cargosContabeis: [],
-      status: detectStatus(inscricaoAte),
-      dataCaptura: new Date().toISOString(),
-    });
-  }
-
-  return items;
+  if (!html) throw new Error("PCI indisponível: " + url);
+  return lerListagemPCI(html);
 }
 
 // ─── Scraping de detalhe ──────────────────────────────────────────────────────
@@ -1190,7 +1001,7 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   };
   if (!url) return empty;
   const html = await fetchComTimeout(url);
-  if (!html) return empty;
+  if (!html) throw new Error("Notícia PCI indisponível: " + url);
   const cheerio = await import("cheerio");
   const $ = cheerio.load(html);
 
@@ -1219,20 +1030,21 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   // no texto da notícia (ex.: "exclusivamente pelo site www.inepam.org.br") —
   // mais útil para o candidato do que só o link da notícia do PCI.
   let siteOficialHref = "";
+  let prioridadeSite = -1;
   if (!pdfHref) {
     const DOMINIOS_IGNORADOS = [
       "pciconcursos.com.br", "facebook.com", "instagram.com", "twitter.com",
       "x.com", "linkedin.com", "t.me", "telegram", "whatsapp.com", "youtube.com",
     ];
-    $("a[href^='http']").each((_, el) => {
-      if (siteOficialHref) return;
+    $("[itemprop=articleBody] a[href^='http']").each((_, el) => {
       const h = ($(el).attr("href") || "").trim();
       try {
         const host = new URL(h).hostname.replace(/^www\./, "");
         if (DOMINIOS_IGNORADOS.some(d => host.includes(d))) return;
         const contexto = ($(el).parent().text() || "").toLowerCase();
         if (contexto.includes("site") || contexto.includes("inscri") || contexto.includes("edital")) {
-          siteOficialHref = h;
+          const prioridade = contexto.includes("inscri") ? 2 : 1;
+          if(prioridade > prioridadeSite) { siteOficialHref = h; prioridadeSite = prioridade; }
         }
       } catch { /* URL inválida, ignora */ }
     });
@@ -1258,7 +1070,7 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
 
   // ── Extrai do HTML da notícia (base) ──────────────────────────────────────
   // Remove navegação e notícias relacionadas antes de procurar cargos e datas.
-  const $artigo = $("article").first().clone();
+  const $artigo = $("[itemprop=articleBody]").first().clone();
   $artigo.find("nav, aside, script, style").remove();
   const texto = $artigo.length ? $artigo.text() : bodyText.split(/Veja também:|Destaques:/i)[0];
   const det = extrairDetalhes(texto);
@@ -1290,6 +1102,7 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
     });
   }
 
+  const pdfConfirmados: NonNullable<DetalhesEdital["cargosDetalhados"]> = [];
   // ── Extrai do PDF (fonte mais rica) ──────────────────────────────────────
   // Sobrescreve campos do HTML com dados do PDF quando disponíveis e melhores
   if (pdfHref) {
@@ -1317,6 +1130,7 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
         }
         if (pdf.cargosDetalhados && pdf.cargosDetalhados.length > 0) {
           det.cargosDetalhados = pdf.cargosDetalhados;
+          pdfConfirmados.push(...pdf.cargosDetalhados);
         }
       }
     } catch {
@@ -1324,344 +1138,69 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
     }
   }
 
-  det.textoHtml = texto;
-  return det;
+  const estruturado = lerNoticiaPCI(html, url);
+  const bancasFonte=new Set<string>();
+  $("[itemprop=articleBody] a[href]").each((_,el)=>{
+    try {
+      const host=new URL($(el).attr("href") || "").hostname.replace(/^www\./,"");
+      for(const [dominio,banca] of Object.entries(DOMINIO_BANCA)) if(host===dominio || host.endsWith("."+dominio)) bancasFonte.add(banca);
+    } catch { /* relative/non-web link */ }
+  });
+  if(bancasFonte.size) det.banca=bancasFonte.size===1 ? [...bancasFonte][0] : "-";
+  const confirmados = estruturado.cargosDetalhados || [];
+  // Only an exact role match may inherit values from an accessible PDF table.
+  for (const cd of confirmados) {
+    const pdfCargo = pdfConfirmados.find(p => normalizar(p.cargo) === normalizar(cd.cargo));
+    if (pdfCargo) {
+      if (pdfCargo.salario && pdfCargo.salario !== "Ver edital") cd.salario = pdfCargo.salario;
+      if (pdfCargo.vagas && pdfCargo.vagas !== "Ver edital") cd.vagas = pdfCargo.vagas;
+    }
+  }
+  for (const cd of pdfConfirmados) {
+    if ((["formacao-contabil","cargo-contabil"].includes(tipoRelevancia(cd.cargo,cd.requisito) || "")) && !confirmados.some(c=>normalizar(c.cargo)===normalizar(cd.cargo))) confirmados.push(cd);
+  }
+  return { ...det, ...estruturado, dataProva: estruturado.dataProva || "-",
+    linkEdital: pdfHref || siteOficialHref || estruturado.linkEdital || url, banca: det.banca, cargosDetalhados: confirmados, cargosContabeis: confirmados.map(c => c.cargo) };
+
 }
 
 // ─── Principal ────────────────────────────────────────────────────────────────
 
-export async function scrapeAllConcursos(): Promise<Concurso[]> {
-  const seen   = new Set<string>();
-  const brutos: Partial<Concurso>[] = [];
-
-  // ── 1. Vagas ativas (inscrições abertas + previstos) ──────────────────────
-  for (const url of VAGAS_URLS) {
-    try {
-      const items = await scrapeListagem(url);
-      for (const item of items) {
-        // Descarta só se encerrado E sem chance de ter prova futura.
-        // Concursos recentemente encerrados (diasRestantes >= -60) passam para
-        // scrapeDetalhe verificar se há data de prova futura → "Aguardando Prova"
-        if (item.status === "Encerrado" && (item.diasRestantes ?? -999) < -60) continue;
-        const key = item.id || slugify((item.cargo || "") + (item.orgao || ""));
-        if (!seen.has(key) && item.orgao && item.orgao !== "-") {
-          seen.add(key);
-          brutos.push({ ...item, id: key });
-        }
+export async function descobrirConcursos(): Promise<Partial<Concurso>[]> {
+  // The general index discovers jobs whose titles do not mention Accounting.
+  // The dedicated lists also retain contests waiting for their exam.
+  const urls = [...new Set(["/concursos/", ...VAGAS_URLS, ...CONCURSOS_URLS])];
+  const candidatos = new Map<string, Partial<Concurso>>();
+  for (let i=0;i<urls.length;i+=5) {
+    const resultados = await Promise.allSettled(urls.slice(i,i+5).map(u=>scrapeListagem(u)));
+    for (let j=0;j<resultados.length;j++) {
+      const r=resultados[j];
+      if (r.status === "rejected") {
+        if (urls[i+j] === "/concursos/") throw r.reason;
+        continue;
       }
-    } catch {
-      continue;
+      for(const item of r.value) {
+        const fim = diaNumero(item.inscricaoAte);
+        if (fim !== null && fim < hojeBrasil()-180) continue;
+        if (item.linkNoticia && !candidatos.has(item.linkNoticia)) candidatos.set(item.linkNoticia,item);
+      }
     }
   }
-
-  // ── 2. Concursos em andamento (inscrições encerradas, aguardando prova) ───
-  // Não filtra por status "Encerrado" pois as inscrições já fecharam —
-  // o reclassificarStatus vai promovê-los para "Aguardando Prova" se a prova for futura
-  for (const url of CONCURSOS_URLS) {
-    try {
-      const items = await scrapeListagem(url);
-      for (const item of items) {
-        const key = item.id || slugify((item.cargo || "") + (item.orgao || ""));
-        if (!seen.has(key) && item.orgao && item.orgao !== "-") {
-          seen.add(key);
-          // Marca como "Previsto" para que reclassificarStatus possa promover
-          // para "Aguardando Prova" quando encontrar data de prova futura
-          brutos.push({ ...item, id: key, status: "Previsto" });
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  // ── 3. Notícias por região — captura concursos com vários cargos (ex: IPAM)
-  //        que não aparecem nas páginas /vagas/ por cargo específico.
-  //        O scrapeListagem filtra pelo título da notícia e palavras-chave contábeis.
-  for (const url of NOTICIAS_URLS) {
-    try {
-      const items = await scrapeListagem(url, true); // ehPaginaDeNoticias = true
-      for (const item of items) {
-        if (item.status === "Encerrado" && (item.diasRestantes ?? -999) < -60) continue;
-        const key = item.id || slugify((item.cargo || "") + (item.orgao || ""));
-        if (!seen.has(key) && item.orgao && item.orgao !== "-") {
-          seen.add(key);
-          brutos.push({ ...item, id: key });
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-
-  if (brutos.length === 0) return getFallbackData();
-
-  const LIMITE_DETALHE = 120; // aumentado para cobrir notícias regionais além das /vagas/
-  const completos: Concurso[] = [];
-
-  // Filtra brutos rapidamente antes de fazer scrapeDetalhe (sem HTTP)
-  const brutosFiltrados = brutos.filter(item => {
-    const inscricaoCheck = item.inscricao || item.inscricaoAte || "";
-    const statusPassavel = item.status === "Previsto" || item.status === "Encerrado";
-    if (!statusPassavel && inscricaoCheck && inscricaoCheck !== "Ver edital") {
-      const anosRapidos = (inscricaoCheck.match(/\d{4}/g) || []).map(Number).filter(a => a > 2000);
-      if (anosRapidos.length > 0 && Math.max(...anosRapidos) < new Date().getFullYear()) {
-        return false; // inscrição muito antiga — descarta
-      }
-    }
-    return true;
-  }).slice(0, LIMITE_DETALHE);
-
-  // Paraleliza scrapeDetalhe em lotes de 5 para não estourar timeout
-  const LOTE = 5;
-  const detalhes: DetalhesEdital[] = [];
-  for (let i = 0; i < brutosFiltrados.length; i += LOTE) {
-    const lote = brutosFiltrados.slice(i, i + LOTE);
-    const resultados = await Promise.all(
-      lote.map(item => item.linkNoticia
-        ? scrapeDetalhe(item.linkNoticia)
-        : Promise.resolve({ dataProva: "-", dataResultado: "-", banca: "-", linkEdital: "", cargosContabeis: [], requisito: "-", ehProcessoSeletivo: false, cargosDetalhados: [], textoHtml: "" } as DetalhesEdital)
-      )
-    );
-    detalhes.push(...resultados);
-  }
-
-  for (let i = 0; i < brutosFiltrados.length; i++) {
-    const item = brutosFiltrados[i];
-    let det: DetalhesEdital = detalhes[i] ?? {
-      dataProva: "-", dataResultado: "-", banca: "-",
-      linkEdital: "", cargosContabeis: [], requisito: "-",
-      ehProcessoSeletivo: false, textoHtml: "",
-    };
-
-    // Descarta se o texto da notícia indica processo seletivo
-    if (det.ehProcessoSeletivo) continue;
-
-    // Descarta se a data de prova já passou (compara data completa, não só ano)
-    if (det.dataProva && det.dataProva !== "-") {
-      const mProva = det.dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-      if (mProva) {
-        const diaProva = new Date(parseInt(mProva[3]), parseInt(mProva[2]) - 1, parseInt(mProva[1]));
-        const hoje2 = new Date(); hoje2.setHours(0,0,0,0);
-        if (diaProva < hoje2) continue; // prova já passou → descarta
-      }
-    }
-
-    // Segunda chance no filtro usando texto completo do edital (PDF já lido)
-    const cargoFinal = item.cargo || "-";
-    if (/analista judici[aá]rio/i.test(cargoFinal) &&
-        !det.cargosContabeis.some(c => /contabilidade|cont[aá]bil/i.test(c))) continue;
-    const textoCompleto = det.requisito + " " + det.cargosContabeis.join(" ");
-
-    // Caso 1: "Vários Cargos" — precisa ter cargos contábeis identificados no PDF
-    if (
-      cargoFinal === "Vários Cargos" &&
-      det.cargosContabeis.length === 0 &&
-      !ehConcursoContabil(cargoFinal, item.linkNoticia || "", item.orgao || "", "")
-    ) {
-      continue;
-    }
-
-    // Caso 2: cargo genérico (nível 2) que passou para detalhe — agora exige confirmação do PDF
-    // Se o cargo não tem palavra-chave direta E o PDF não menciona CRC/Contábeis → rejeita
-    const cargoLow = cargoFinal.toLowerCase();
-    const ehCargoDirecto = CARGO_CONTABIL_KW.some(kw => cargoLow.includes(kw));
-    const ehCargoGenerico = !ehCargoDirecto && CARGO_GENERICO_CONTABIL_KW.some(kw => cargoLow.includes(kw));
-    if (ehCargoGenerico) {
-      const reqLow = (det.requisito || "").toLowerCase();
-      // Aceita se PDF confirma Ciências Contábeis/CRC OU nível superior (qualquer graduação)
-      const pdfConfirmaContabil = REQUISITO_CONTABIL_KW.some(kw =>
-        textoCompleto.toLowerCase().includes(kw) || reqLow.includes(kw)
-      );
-      const pdfConfirmaSuperior =
-        reqLow.includes("nível superior") ||
-        reqLow.includes("nivel superior") ||
-        reqLow.includes("graduação") ||
-        reqLow.includes("graduacao") ||
-        reqLow.includes("bacharel") ||
-        reqLow.includes("superior");
-      if (!pdfConfirmaContabil && !pdfConfirmaSuperior && det.cargosContabeis.length === 0) {
-        continue; // genérico sem nível superior confirmado no PDF — descarta
-      }
-    }
-
-    // Filtra só a parte contábil do cargo (ex: "Contador e Agente Legislativo" → "Contador")
-    let cargoDisplay = filtrarCargosContabeis(cargoFinal);
-
-    // Se ainda é "Vários Cargos" e o edital tem cargos contábeis específicos, usa eles
-    if (
-      (cargoDisplay === "Vários Cargos" || cargoDisplay === cargoFinal) &&
-      det.cargosContabeis.length > 0
-    ) {
-      cargoDisplay = det.cargosContabeis.join(", ");
-    }
-
-    // Se ainda é "Vários Cargos" mas o PDF retornou exatamente 1 cargo detalhado, usa ele
-    if (
-      (cargoDisplay === "Vários Cargos" || cargoDisplay === cargoFinal) &&
-      det.cargosDetalhados && det.cargosDetalhados.length >= 1
-    ) {
-      const contabeisDetalhados = det.cargosDetalhados.filter(cd =>
-        CARGO_CONTABIL_KW.some(kw => cd.cargo.toLowerCase().includes(kw))
-      );
-      if (contabeisDetalhados.length === 1) {
-        cargoDisplay = contabeisDetalhados[0].cargo;
-      }
-    }
-
-    // Último fallback: se cargoDisplay ainda é "Vários Cargos",
-    // busca menções diretas de cargos contábeis no texto completo da notícia (HTML)
-    if (cargoDisplay === "Vários Cargos") {
-      const textoNoticia = det.textoHtml || (det.requisito + " " + det.cargosContabeis.join(" "));
-      const mencoesFallback: [RegExp, string][] = [
-        [/\bcontador(?:a)?\b/i, "Contador"],
-        [/\btécnico\s+em\s+contabilidade\b/i, "Técnico em Contabilidade"],
-        [/\btecnico\s+em\s+contabilidade\b/i, "Técnico em Contabilidade"],
-        [/\bauditor\s+fiscal\b/i, "Auditor Fiscal"],
-        [/\bauditor\s+interno\b/i, "Auditor Interno"],
-        [/\banalista\s+cont[aá]b(?:il|ilidade)\b/i, "Analista Contábil"],
-        [/\bfiscal\s+de\s+tribut\w+\b/i, "Fiscal de Tributos"],
-      ];
-      const cargosEncontrados: string[] = [];
-      for (const [re, nome] of mencoesFallback) {
-        if (re.test(textoNoticia) && !cargosEncontrados.includes(nome)) {
-          cargosEncontrados.push(nome);
-        }
-      }
-      if (cargosEncontrados.length === 1) {
-        cargoDisplay = cargosEncontrados[0];
-      } else if (cargosEncontrados.length > 1) {
-        cargoDisplay = cargosEncontrados.join(", ");
-      }
-    }
-
-    // Rejeição final: se a data de prova já passou, não inclui no resultado
-    if (det.dataProva && det.dataProva !== "-") {
-      const mpFinal = det.dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-      if (mpFinal) {
-        const dtFinal = new Date(parseInt(mpFinal[3]), parseInt(mpFinal[2]) - 1, parseInt(mpFinal[1]));
-        dtFinal.setHours(0, 0, 0, 0);
-        const hojeFinal = new Date(); hojeFinal.setHours(0, 0, 0, 0);
-        if (dtFinal < hojeFinal) continue; // prova já passou — descarta
-      }
-    }
-
-    // ── Explosão de multi-cargo ────────────────────────────────────────────────
-    // Estratégia 1: PDF retornou tabela com salários individuais → cada cargo tem dados reais
-    // Estratégia 2: PDF não tinha tabela → usa cargosContabeis com salário "Ver edital"
-    const cargosDetalhados = det.cargosDetalhados ?? [];
-    const cargosContabeisDetalhados = cargosDetalhados.filter(cd => {
-      const cdLow = cd.cargo.toLowerCase();
-      return CARGO_CONTABIL_KW.some(kw => cdLow.includes(kw));
-    });
-
-    // Determina quais cargos explodir
-    const cargosParaExplodir: { cargo: string; vagas: string; salario: string; nivel: string }[] =
-      cargosContabeisDetalhados.length > 1
-        // Estratégia 1: dados reais do PDF
-        ? cargosContabeisDetalhados.map(cd => ({
-            cargo:  cd.cargo,
-            vagas:  cd.vagas,
-            salario: cd.salario,
-            nivel:  cd.nivel || detectNivel(item.nivel || "Superior", cd.cargo),
-          }))
-        // Estratégia 2: usa cargosContabeis do edital sem salário individual
-        : det.cargosContabeis.length > 1
-          ? det.cargosContabeis.map(cg => ({
-              cargo:   cg,
-              vagas:   "Ver edital",  // vagas por cargo desconhecidas (total do edital não se aplica)
-              salario: "Ver edital",  // salário individual desconhecido
-              nivel:   detectNivel(item.nivel || "Superior", cg),
-            }))
-          : [];
-
-    if (cargosParaExplodir.length > 1) {
-      const statusFinal = reclassificarStatus(
-        item.status as Concurso["status"], det.dataProva, det.dataResultado
-      );
-      for (const cd of cargosParaExplodir) {
-        completos.push({
-          id:              slugify(cd.cargo + "-" + (item.orgao || "")),
-          cargo:           cd.cargo,
-          cargosContabeis: [cd.cargo],
-          orgao:           item.orgao || "-",
-          estado:          item.estado || "Nacional",
-          cidade:          item.cidade || "",
-          uf:              item.uf || UF_NOMES[item.estado || ""] || (item.estado || "Nacional"),
-          vagas:           cd.vagas,
-          salario:         cd.salario,
-          inscricao:       item.inscricao || "-",
-          inscricaoAte:    item.inscricaoAte || "Ver edital",
-          diasRestantes:   item.diasRestantes ?? -1,
-          linkNoticia:     item.linkNoticia || "",
-          linkEdital:      det.linkEdital || item.linkNoticia || "",
-          banca:           det.banca !== "-" ? det.banca : (item.banca || "-"),
-          nivel:           cd.nivel,
-          dataProva:       det.dataProva,
-          dataResultado:   det.dataResultado,
-          status:          statusFinal,
-          dataCaptura:     new Date().toISOString(),
-        });
-      }
-      continue; // não executa o push genérico abaixo
-    }
-
-    completos.push({
-      id:             item.id!,
-      cargo:          cargoDisplay,
-      cargosContabeis: det.cargosContabeis.length > 0
-        ? det.cargosContabeis
-        : cargoFinal !== "Vários Cargos" ? [cargoFinal] : [],
-      orgao:          item.orgao || "-",
-      estado:         item.estado || "Nacional",
-      cidade:         item.cidade || "",
-      uf:             item.uf || UF_NOMES[item.estado || ""] || (item.estado || "Nacional"),
-      vagas:          det.cargosDetalhados?.length === 1 ? det.cargosDetalhados[0].vagas : item.vagas || "-",
-      salario:        det.cargosDetalhados?.length === 1 ? det.cargosDetalhados[0].salario : item.salario || "A consultar",
-      inscricao:      item.inscricao || "-",
-      inscricaoAte:   item.inscricaoAte || "Ver edital",
-      diasRestantes:  item.diasRestantes ?? -1,
-      linkNoticia:    item.linkNoticia || "",
-      linkEdital:     det.linkEdital || item.linkNoticia || "",
-      banca:          det.banca !== "-" ? det.banca : (item.banca || "-"),
-      nivel:          detectNivel(item.nivel || "Superior", cargoDisplay),
-      dataProva:      det.dataProva,
-      dataResultado:  det.dataResultado,
-      status:          reclassificarStatus(
-        item.status as Concurso["status"],
-        det.dataProva,
-        det.dataResultado
-      ),
-      dataCaptura:     new Date().toISOString(),
-    });
-  }
-
-  // Ordem: Inscrições Abertas → Aguardando Prova → Previsto
-  const ordemStatus: Record<string, number> = {
-    "Inscricoes Abertas": 0,
-    "Aguardando Prova":   1,
-    "Previsto":           2,
-  };
-  return completos
-    .filter(c => c.status !== "Encerrado") // remove os que a prova já passou
-    .sort((a, b) => {
-      const oa = ordemStatus[a.status] ?? 2;
-      const ob = ordemStatus[b.status] ?? 2;
-      if (oa !== ob) return oa - ob;
-      if (a.status === "Inscricoes Abertas") return a.diasRestantes - b.diasRestantes;
-      // Aguardando Prova: ordena por data da prova
-      if (a.status === "Aguardando Prova" && a.dataProva !== "-" && b.dataProva !== "-") {
-        return a.dataProva.split("/").reverse().join("").localeCompare(
-          b.dataProva.split("/").reverse().join("")
-        );
-      }
-      return 0;
-    });
+  return [...candidatos.values()];
 }
 
-// ─── Fallback ─────────────────────────────────────────────────────────────────
+export async function scrapeAllConcursos(): Promise<Concurso[]> {
+  const items=await descobrirConcursos();
+  const concursos: Concurso[]=[];
+  for(let i=0;i<items.length;i+=5) {
+    const lote=items.slice(i,i+5);
+    const detalhes=await Promise.all(lote.map(c=>scrapeDetalhe(c.linkNoticia || "")));
+    for(let j=0;j<lote.length;j++) concursos.push(...montarConcursos(lote[j],detalhes[j]));
+  }
+  return concursos;
+}
 
-export function getFallbackData(): Concurso[] {
+function getFallbackData(): Concurso[] {
   return [
     {
       id: "contador-camara-tamboara-pr",

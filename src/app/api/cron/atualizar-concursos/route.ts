@@ -30,7 +30,14 @@ export async function GET(req: Request) {
   let totalLotes = 22; // fallback seguro
   const erros: string[] = [];
 
-  for (let lote = 0; lote < totalLotes; lote++) {
+  // Resume the last acknowledged chunk if the previous invocation hit its limit.
+  let inicioLote=0;
+  try {
+    const estado=await fetch(`${baseUrl}/api/scrape-lote?status=1`,{headers:{authorization:authHeader || ""}}).then(r=>r.json());
+    if(estado.ok && estado.totalLotes) { inicioLote=estado.proximoLote; totalLotes=estado.totalLotes; }
+  } catch { /* first run starts at zero */ }
+  for (let lote = inicioLote; lote < totalLotes; lote++) {
+    if(Date.now()-inicio>230000) return NextResponse.json({ok:true,pendente:true,proximoLote:lote,totalLotes,totalAcumulado});
     const isFim = lote === totalLotes - 1;
     const params = new URLSearchParams({
       lote: String(lote),
@@ -49,10 +56,12 @@ export async function GET(req: Request) {
         totalAcumulado = data.totalAcumulado ?? totalAcumulado;
       } else {
         erros.push(`lote ${lote}: ${data.error ?? "falhou"}`);
+        break; // Preserve the checkpoint; later chunks must never overwrite a partial run.
       }
       if (data.fim) break;
     } catch (e: unknown) {
       erros.push(`lote ${lote}: ${String(e)}`);
+      break;
     }
   }
 

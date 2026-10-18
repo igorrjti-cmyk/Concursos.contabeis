@@ -33,6 +33,7 @@ interface Overrides {
 
 const STATUS_OPTIONS: { value: Concurso["status"]; label: string }[] = [
   { value: "Inscricoes Abertas", label: "Inscrições Abertas" },
+  { value: "Inscricoes em breve", label: "Inscrições em breve" },
   { value: "Previsto",           label: "Previsto" },
   { value: "Aguardando Prova",   label: "Aguardando Prova" },
   { value: "Encerrado",          label: "Encerrado" },
@@ -43,12 +44,14 @@ const NIVEIS = ["Superior", "Médio", "Técnico", "Médio/Técnico", "Médio/Té
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   "Inscricoes Abertas": { bg: "#00C896", color: "#002D1F" },
   "Aguardando Prova":   { bg: "#A78BFA", color: "#1A0050" },
+  "Inscricoes em breve": { bg: "#FFB800", color: "#2D1F00" },
   "Previsto":           { bg: "#FFB800", color: "#2D1F00" },
   "Encerrado":          { bg: "#FF4B4B", color: "#fff" },
 };
 const STATUS_LABEL: Record<string, string> = {
   "Inscricoes Abertas": "INSCRIÇÕES ABERTAS",
   "Aguardando Prova":   "AGUARDANDO PROVA",
+  "Inscricoes em breve": "INSCRIÇÕES EM BREVE",
   "Previsto":           "PREVISTO",
   "Encerrado":          "ENCERRADO",
 };
@@ -207,15 +210,13 @@ export default function CardEditor({ concurso, onClose, onMarcarPostado, onAgend
   const stLabel = STATUS_LABEL[concursoEditado.status] ?? concursoEditado.status;
   const temProva = concursoEditado.dataProva && concursoEditado.dataProva !== "-";
   const MAX_CARGO = 36;
-  const cargoDisplay = concursoEditado.cargo.length > MAX_CARGO
-    ? concursoEditado.cargo.slice(0, MAX_CARGO - 1).trimEnd() + "…"
-    : concursoEditado.cargo;
+  const cargoDisplay = concursoEditado.cargo;
   const titleSize = cargoDisplay.length > 30 ? 20 : cargoDisplay.length > 20 ? 25 : 30;
   const campos = [
-    { icon: "💰", label: "Salário",  value: concursoEditado.salario !== "Ver edital" ? concursoEditado.salario : "A definir" },
-    { icon: "🎯", label: "Vagas",    value: concursoEditado.vagas   !== "Ver edital" ? concursoEditado.vagas   : "A definir" },
-    { icon: "📅", label: concursoEditado.status === "Inscricoes Abertas" ? "Inscrições até" : "Edital", value: concursoEditado.inscricaoAte },
-    { icon: "🏦", label: "Banca",    value: concursoEditado.banca !== "-" ? concursoEditado.banca : "A definir" },
+    { icon: "💰", label: "Salário",  value: concursoEditado.salario !== "Ver edital" ? concursoEditado.salario : "Consultar edital" },
+    { icon: "🎯", label: "Vagas",    value: concursoEditado.vagas   !== "Ver edital" ? concursoEditado.vagas   : "Consultar edital" },
+    { icon: "📅", label: concursoEditado.status === "Inscricoes em breve" ? "Inscrições a partir de" : "Inscrições até", value: concursoEditado.status === "Inscricoes em breve" ? concursoEditado.inscricaoInicio || "Consultar edital" : concursoEditado.inscricaoAte },
+    { icon: "🏦", label: "Banca",    value: concursoEditado.banca !== "-" ? concursoEditado.banca : "Consultar edital" },
   ];
 
   return (

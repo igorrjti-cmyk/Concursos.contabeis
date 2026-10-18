@@ -4,7 +4,8 @@
 // Feed 4:5: 480×600px preview → scale 2.25 = 1080×1350px real
 // Stories 9:16: 270×480px preview → scale 4 = 1080×1920px real
 
-import { Concurso, statusDisplay } from "@/lib/scraper";
+import type { Concurso } from "@/lib/scraper";
+import { statusDisplay } from "@/lib/concurso-dados";
 
 interface Props {
   concurso: Concurso;
@@ -13,7 +14,9 @@ interface Props {
 }
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; glow: string; border: string }> = {
+  "Aguardando Prova": { bg:"#A78BFA",color:"#1A0050",glow:"rgba(167,139,250,.35)",border:"rgba(167,139,250,.25)" },
   "Inscricoes Abertas": { bg: "#00C896", color: "#002D1F", glow: "rgba(0,200,150,0.4)",  border: "rgba(0,200,150,0.3)"  },
+  "Inscricoes em breve": { bg: "#FFB800", color: "#2D1F00", glow:"rgba(255,184,0,.35)", border:"rgba(255,184,0,.25)" },
   "Previsto":           { bg: "#FFB800", color: "#2D1F00", glow: "rgba(255,184,0,0.35)", border: "rgba(255,184,0,0.25)" },
   "Encerrado":          { bg: "#FF4B4B", color: "#fff",    glow: "rgba(255,75,75,0.35)", border: "rgba(255,75,75,0.25)" },
 };
@@ -26,7 +29,7 @@ export default function InstagramCard({
   const st        = STATUS_STYLE[c.status] ?? STATUS_STYLE["Previsto"];
   const temProva  = c.dataProva     && c.dataProva     !== "-";
   const temRes    = c.dataResultado && c.dataResultado !== "-";
-  const urgente   = c.diasRestantes >= 0 && c.diasRestantes <= 7;
+  const urgente   = c.status === "Inscricoes Abertas" && c.diasRestantes >= 0 && c.diasRestantes <= 7;
   const isStories = formato === "stories";
 
   const W = isStories ? 270 : 480;
@@ -38,9 +41,7 @@ export default function InstagramCard({
   const PAD_BOTTOM = isStories ? 18 : 18;
 
   const MAX_CARGO    = isStories ? 26 : 36;
-  const cargoDisplay = c.cargo.length > MAX_CARGO
-    ? c.cargo.slice(0, MAX_CARGO - 1).trimEnd() + "…"
-    : c.cargo;
+  const cargoDisplay = c.cargo;
 
   const titleSize = isStories
     ? 12
@@ -51,14 +52,14 @@ export default function InstagramCard({
   const orgaoSize = isStories ? 9 : titleSize * 0.52;
 
   const campos = [
-    { icon: "💰", label: "Salário",  value: c.salario !== "Ver edital" ? c.salario : "A definir" },
-    { icon: "🎯", label: "Vagas",    value: c.vagas   !== "Ver edital" ? c.vagas   : "A definir" },
+    { icon: "💰", label: "Salário",  value: c.salario !== "Ver edital" ? c.salario : "Consultar edital" },
+    { icon: "🎯", label: "Vagas",    value: c.vagas   !== "Ver edital" ? c.vagas   : "Consultar edital" },
     {
       icon: "📅",
-      label: c.status === "Inscricoes Abertas" ? "Inscrições até" : "Edital",
-      value: c.inscricaoAte,
+      label: c.status === "Inscricoes em breve" ? "Inscrições a partir de" : "Inscrições até",
+      value: c.status === "Inscricoes em breve" ? c.inscricaoInicio || "Consultar edital" : c.inscricaoAte,
     },
-    { icon: "🏦", label: "Banca", value: c.banca !== "-" ? c.banca : "A definir" },
+    { icon: "🏦", label: "Banca", value: c.banca !== "-" ? c.banca : "Consultar edital" },
   ];
 
   const gap             = isStories ? 6 : 10;

@@ -1,3 +1,4 @@
+import { atualizarPrazo } from "@/lib/concurso-dados";
 // src/app/api/bio/route.ts
 // Retorna os concursos publicados no Instagram (histórico) cruzados com o cache,
 // para exibir na página pública /bio (link da bio do Instagram).
@@ -54,7 +55,7 @@ export async function GET() {
       .eq("chave", "concursos:v20")
       .single<{ dados: { concursos: Concurso[] } }>();
 
-    const concursosAtivos: Concurso[] = cacheRow?.dados?.concursos ?? [];
+    const concursosAtivos: Concurso[] = (cacheRow?.dados?.concursos ?? []).map(c=>atualizarPrazo(c)).filter(c=>c.status!=="Encerrado");
     const mapaAtivos = new Map(concursosAtivos.map(c => [c.id, c]));
 
     // 3. Deduplica por concurso_id (mantém o post mais recente de cada concurso)

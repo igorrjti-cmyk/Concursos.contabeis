@@ -1,3 +1,7 @@
+import { atualizarPrazo, normalizar } from "@/lib/concurso-dados";
+import { renderCardServer } from "@/lib/card-renderer-server";
+import { gerarLegenda } from "@/lib/legenda";
+import type { Concurso } from "@/lib/scraper";
 // src/app/api/cron/publicar-agendados/route.ts
 // Cron job a cada 5 minutos — publica agendamentos vencidos via Instagram Graph API
 // Os cards base64 foram gerados no navegador do usuário ao agendar e estão salvos no banco
@@ -109,7 +113,7 @@ export async function GET(req: Request) {
   // na mesma chamada arriscava estourar o timeout do serviço de cron externo
   // (ex: cron-job.org no plano free). Como o cron roda a cada poucas horas,
   // processar 1 por vez ainda dá conta de publicar tudo no mesmo dia.
-  const query = sb.from("agendamentos_posts").select("id, concurso_id, cargo, orgao, estado, modo, agendado_para, publicado, feed_base64, stories_base64, legenda, tentativas").eq("publicado", false).limit(isTest ? 10 : 1);
+  const query = sb.from("agendamentos_posts").select("id, concurso_id, cargo, orgao, estado, modo, agendado_para, publicado, feed_base64, stories_base64, legenda, tentativas").eq("publicado", false).lt("tentativas", 3).limit(isTest ? 10 : 1);
   const { data: pendentes, error } = isTest
     ? await query.order("agendado_para", { ascending: true })
     : await query.lte("agendado_para", new Date().toISOString());
@@ -119,6 +123,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, processados: 0, msg: "Nenhum agendamento pendente" });
   }
 
+  const {data:cache,error:erroCache}=await sb.from("cache_concursos").select("dados").eq("chave","concursos:v20").single();
+  if(erroCache) return NextResponse.json({ok:false,error:"Não foi possível conferir os dados antes da publicação"},{status:503});
+  const atuais: Concurso[]=cache?.dados?.concursos || [];
   const resultados = [];
 
   for (const ag of pendentes) {
@@ -144,6 +151,18 @@ export async function GET(req: Request) {
     }
 
     try {
+      const fonte=atuais.find(c=>c.id===ag.concurso_id) || atuais.find(c=>normalizar(c.orgao)===normalizar(ag.orgao) && normalizar(c.cargo)===normalizar(ag.cargo));
+      const atual=fonte ? atualizarPrazo(fonte) : undefined;
+      if(!atual?.dadosValidados || atual.status!=="Inscricoes Abertas") {
+        await sb.from("agendamentos_posts").update({tentativas:3}).eq("id",ag.id);
+        r.status="Revisão necessária: cargo não confirmado ou inscrições fora do prazo";
+        resultados.push(r);
+        continue;
+      }
+      // Rebuild immediately before publishing; stored images may contain yesterday's countdown.
+      ag.feed_base64=renderCardServer(atual,"feed");
+      ag.stories_base64=renderCardServer(atual,"stories");
+      ag.legenda=gerarLegenda(atual);
       // Publica feed e stories EM PARALELO (não sequencial) — reduz o tempo
       // total pela metade, importante porque serviços de cron externos
       // (como cron-job.org no plano free) têm timeout curto de resposta.

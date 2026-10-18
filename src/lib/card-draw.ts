@@ -6,26 +6,31 @@
 
 import type { Concurso } from "./scraper";
 import { nomeCargoParaCard } from "./especialidades-contabeis";
+import { atualizarPrazo, fonteData } from "./concurso-dados";
 
 const STATUS_BG: Record<string, string> = {
   "Inscricoes Abertas": "#00C896",
   "Aguardando Prova":   "#A78BFA",
+  "Inscricoes em breve": "#FFB800",
   "Previsto":           "#FFB800",
   "Encerrado":          "#FF4B4B",
 };
 const STATUS_COLOR: Record<string, string> = {
+  "Inscricoes em breve": "#2D1F00",
   "Inscricoes Abertas": "#002D1F",
   "Aguardando Prova":   "#1A0050",
   "Previsto":           "#2D1F00",
   "Encerrado":          "#fff",
 };
 const STATUS_GLOW: Record<string, string> = {
+  "Inscricoes em breve": "rgba(255,184,0,0.35)",
   "Inscricoes Abertas": "rgba(0,200,150,0.4)",
   "Aguardando Prova":   "rgba(167,139,250,0.35)",
   "Previsto":           "rgba(255,184,0,0.35)",
   "Encerrado":          "rgba(255,75,75,0.35)",
 };
 const STATUS_LABEL: Record<string, string> = {
+  "Inscricoes em breve": "INSCRIÇÕES EM BREVE",
   "Inscricoes Abertas": "INSCRIÇÕES ABERTAS",
   "Aguardando Prova":   "AGUARDANDO PROVA",
   "Previsto":           "PREVISTO",
@@ -34,6 +39,24 @@ const STATUS_LABEL: Record<string, string> = {
 
 function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
+}
+
+function textoEmLinhas(ctx: DesenhavelCtx, texto: string, x: number, y: number, largura: number, fonte: string, tamanho = 64): number {
+  let linhas: string[] = [];
+  do {
+    ctx.font = `800 ${tamanho}px ${fonte}`;
+    linhas = [''];
+    for (const palavra of texto.split(/\s+/)) {
+      const i=linhas.length-1;
+      const tentativa=(linhas[i]+' '+palavra).trim();
+      if(linhas[i] && ctx.measureText(tentativa).width>largura) linhas.push(palavra);
+      else linhas[i]=tentativa;
+    }
+    if(linhas.length<=3 || tamanho<=34) break;
+    tamanho-=2;
+  } while(tamanho>=34);
+  for(let i=0;i<linhas.length;i++) ctx.fillText(linhas[i],x,y+tamanho*.85+i*tamanho*1.1);
+  return linhas.length*tamanho*1.1;
 }
 
 // Tipagem mínima e comum entre CanvasRenderingContext2D (DOM) e
@@ -91,6 +114,7 @@ export function desenharCard(
   formato: "feed" | "stories" = "feed",
   fontFamily = "Sora, -apple-system, sans-serif"
 ): void {
+  c = atualizarPrazo(c);
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
 
@@ -99,7 +123,7 @@ export function desenharCard(
   const stGlow  = STATUS_GLOW[c.status]  ?? "rgba(255,184,0,0.35)";
   const stLabel = STATUS_LABEL[c.status] ?? c.status;
 
-  const urgente = c.diasRestantes >= 0 && c.diasRestantes <= 7;
+  const urgente = c.status === "Inscricoes Abertas" && c.diasRestantes >= 0 && c.diasRestantes <= 7;
   const temProva = c.dataProva && c.dataProva !== "-";
   const isStories = formato === "stories";
 
@@ -167,7 +191,7 @@ export function desenharCard(
     ctx.fill();
     ctx.font = `800 24px ${FONT}`;
     ctx.fillStyle = "#fff";
-    ctx.fillText("🚨  URGENTE — INSCRIÇÕES ENCERRAM EM", PAD + 24, Y + 42);
+    ctx.fillText("ATENÇÃO AO PRAZO DE INSCRIÇÃO", PAD + 24, Y + 42);
     ctx.font = `900 48px ${FONT}`;
     ctx.fillStyle = "#fff";
     ctx.textAlign = "right";
@@ -177,21 +201,16 @@ export function desenharCard(
   }
 
   // ── Cargo ────────────────────────────────────────────────────────────────
-  const cargoTxt = truncate(nomeCargoParaCard(c.cargo, true), isStories ? 28 : 36);
-  const cargoSize = cargoTxt.length > 28 ? 64 : cargoTxt.length > 20 ? 76 : 90;
-  ctx.font = `800 ${cargoSize}px ${FONT}`;
   ctx.fillStyle = "#fff";
-  ctx.fillText(cargoTxt, PAD, Y + cargoSize * 0.85);
-  Y += cargoSize * 1.1;
+  Y += textoEmLinhas(ctx, nomeCargoParaCard(c.cargo), PAD, Y, W-PAD*2, FONT, 64);
 
   // ── Órgão ────────────────────────────────────────────────────────────────
   ctx.font = `700 38px ${FONT}`;
   ctx.fillStyle = "#00C896";
-  ctx.fillText(truncate(c.orgao, 44), PAD, Y + 38);
-  Y += 60;
+  Y += textoEmLinhas(ctx, c.orgao, PAD, Y+8, W-PAD*2, FONT, 34)+20;
 
   // ── Tags estado + nível ──────────────────────────────────────────────────
-  const tags = [`📍 ${(c as { cidade?: string }).cidade ? (c as { cidade?: string }).cidade + "/" : ""}${c.estado}`, `🎓 ${c.nivel}`];
+  const tags = [`${c.cidade ? c.cidade + "/" : ""}${c.estado}`, `${c.nivel}`];
   let tagX = PAD;
   for (const tag of tags) {
     ctx.font = `600 24px ${FONT}`;
@@ -222,7 +241,7 @@ export function desenharCard(
     ctx.stroke();
     ctx.font = `700 22px ${FONT}`;
     ctx.fillStyle = "rgba(196,181,253,0.7)";
-    ctx.fillText("📝  DATA DA PROVA", PAD + 30, Y + 44);
+    ctx.fillText("DATA PREVISTA DA PROVA", PAD + 30, Y + 44);
     ctx.font = `900 62px ${FONT}`;
     ctx.fillStyle = "#E9D5FF";
     ctx.fillText(c.dataProva, PAD + 30, Y + 110);
@@ -231,11 +250,11 @@ export function desenharCard(
 
   // ── Grid de campos ───────────────────────────────────────────────────────
   const campos = [
-    { icon: "💰", label: "Salário",  value: truncate(c.salario, 18) },
-    { icon: "🎯", label: "Vagas",    value: truncate(c.vagas,   18) },
-    { icon: "📅", label: c.status === "Inscricoes Abertas" ? "Inscrições até" : "Edital",
-                  value: truncate(c.inscricaoAte, 18) },
-    { icon: "🏦", label: "Banca",    value: truncate(c.banca !== "-" ? c.banca : "A definir", 18) },
+    { icon: "", label: "Salário",  value: fonteData(c.salario) },
+    { icon: "", label: "Vagas",    value: fonteData(c.vagas) },
+    { icon: "", label: c.status === "Inscricoes em breve" ? "Inscrições a partir de" : "Inscrições até",
+                  value: fonteData(c.status === "Inscricoes em breve" ? c.inscricaoInicio || "-" : c.inscricaoAte) },
+    { icon: "", label: "Banca",    value: fonteData(c.banca) },
   ];
 
   const cW = (W - PAD * 2 - 16) / 2;
@@ -255,9 +274,11 @@ export function desenharCard(
     ctx.stroke();
     ctx.font = `600 20px ${FONT}`;
     ctx.fillStyle = "rgba(255,255,255,0.3)";
-    ctx.fillText(`${campos[i].icon} ${campos[i].label.toUpperCase()}`, cx + 18, cy + 34);
+    ctx.fillText(campos[i].label.toUpperCase(), cx + 18, cy + 34);
     ctx.font = `700 32px ${FONT}`;
     ctx.fillStyle = "#fff";
+    let size=32;
+    while(ctx.measureText(campos[i].value).width>cW-36 && size>18) { size-=1; ctx.font=`700 ${size}px ${FONT}`; }
     ctx.fillText(campos[i].value, cx + 18, cy + 82);
   }
   Y += 2 * cH + 2 * cGap + 32;
@@ -306,8 +327,12 @@ export function desenharCard(
     ctx.fillText("ACESSE O LINK", W / 2, ctaY + 34);
     ctx.font = `800 32px ${FONT}`;
     ctx.fillStyle = "#00C896";
-    ctx.fillText("🔗  Link na bio →", W / 2, ctaY + 74);
+    ctx.fillText("Link na bio", W / 2, ctaY + 74);
     ctx.textAlign = "left";
   }
+  ctx.font=`500 17px ${FONT}`;
+  ctx.fillStyle="rgba(255,255,255,.5)";
+  const captura=new Date(c.dataCaptura || Date.now());
+  const dataFonte=Number.isFinite(captura.getTime()) ? captura.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '';
+  ctx.fillText(`Fonte: PCI Concursos | Consulta: ${dataFonte} | Confira retificações no edital`,PAD,H-18);
 }
-

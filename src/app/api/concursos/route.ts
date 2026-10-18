@@ -1,3 +1,4 @@
+import { atualizarPrazo } from "@/lib/concurso-dados";
 // src/app/api/concursos/route.ts
 // Cache via Supabase (tabela cache_concursos) - TTL 6h
 // CORREÇÃO: GET nunca faz scraping ao vivo — retorna cache mesmo expirado (stale).
@@ -13,109 +14,7 @@ export const maxDuration = 300;
 
 // Reclassifica status baseado na data atual — corrige cache desatualizado
 function reclassificarCache(concursos: Concurso[]): Concurso[] {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-
-  return concursos
-    .map(c => {
-      let diasRestantes = c.diasRestantes;
-      if (c.inscricaoAte && c.inscricaoAte !== "Ver edital" && c.inscricaoAte !== "-") {
-        const partes = c.inscricaoAte.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-        if (partes) {
-          const ate = new Date(+partes[3], +partes[2] - 1, +partes[1]);
-          diasRestantes = Math.ceil((ate.getTime() - hoje.getTime()) / 86_400_000);
-        }
-      }
-
-      let status = c.status;
-      const anoAtual = hoje.getFullYear();
-
-      if (c.dataProva && c.dataProva !== "-") {
-        const provaParts = c.dataProva.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-        if (provaParts) {
-          const dtProva = new Date(
-            parseInt(provaParts[3]),
-            parseInt(provaParts[2]) - 1,
-            parseInt(provaParts[1])
-          );
-          dtProva.setHours(0, 0, 0, 0);
-          if (dtProva < hoje) {
-            return { ...c, status: "Encerrado" as const, diasRestantes };
-          }
-        }
-      }
-
-      const todasDatas = [
-        c.inscricao || "",
-        c.inscricaoAte || "",
-        c.dataProva || "",
-        c.dataResultado || "",
-      ].join(" ");
-
-      const anosEncontrados = (todasDatas.match(/\d{4}/g) || [])
-        .map(Number)
-        .filter(a => a >= 2010 && a <= anoAtual + 2);
-
-      if (anosEncontrados.length > 0) {
-        const anoMaisRecente = Math.max(...anosEncontrados);
-        if (anoMaisRecente < anoAtual) {
-          status = "Encerrado";
-        }
-      } else {
-        if (diasRestantes < -30) {
-          status = "Encerrado";
-        }
-      }
-
-      if (status === "Inscricoes Abertas" && diasRestantes < 0) {
-        if (c.dataProva && c.dataProva !== "-") {
-          const [dp, mp, yp] = c.dataProva.split("/").map(Number);
-          if (!isNaN(dp) && !isNaN(mp) && !isNaN(yp)) {
-            const dtProva = new Date(yp, mp - 1, dp);
-            if (dtProva >= hoje) {
-              status = "Aguardando Prova";
-            } else {
-              status = "Encerrado";
-            }
-          } else {
-            status = "Encerrado";
-          }
-        } else {
-          status = "Encerrado";
-        }
-      }
-
-      if (status === "Aguardando Prova") {
-        if (c.dataProva && c.dataProva !== "-") {
-          const [d, m, y] = c.dataProva.split("/").map(Number);
-          if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
-            const dp = new Date(y, m - 1, d);
-            if (dp >= hoje) {
-              status = "Aguardando Prova";
-            } else {
-              if (c.dataResultado && c.dataResultado !== "-") {
-                const [dr, mr, yr] = c.dataResultado.split("/").map(Number);
-                const dRes = new Date(yr, mr - 1, dr);
-                if (dRes >= hoje) {
-                  status = "Aguardando Prova";
-                } else {
-                  status = "Encerrado";
-                }
-              } else {
-                status = "Encerrado";
-              }
-            }
-          }
-        } else {
-          if (diasRestantes < -14) {
-            status = "Encerrado";
-          }
-        }
-      }
-
-      return { ...c, status, diasRestantes };
-    })
-    .filter(c => c.status !== "Encerrado");
+  return concursos.map(c=>atualizarPrazo(c)).filter(c=>c.status!=="Encerrado");
 }
 
 const CACHE_KEY = "concursos:v20";
@@ -157,6 +56,7 @@ export async function GET(req: Request) {
           fromCache: true,
           stale,           // true = cache expirado, admin pode atualizar em background
           concursos: concursosReclassificados,
+          candidatosAnalisados: (data.dados as {candidatosAnalisados?:number}).candidatosAnalisados,
         });
       }
     }

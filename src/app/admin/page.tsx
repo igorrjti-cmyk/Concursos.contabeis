@@ -6,7 +6,8 @@ import InstagramCard from "@/components/InstagramCard";
 import CardEditor from "@/components/CardEditor";
 import { gerarLegenda } from "@/lib/legenda";
 import type { Concurso } from "@/lib/scraper";
-import { UF_NOMES } from "@/lib/scraper";
+import { UF_NOMES } from "@/lib/ufs";
+import { statusDisplay } from "@/lib/concurso-dados";
 import type { PostHistorico } from "@/app/api/historico/route";
 
 // Hook utilitário: retarda a atualização de um valor até o usuário parar de digitar
@@ -19,7 +20,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-type FilterStatus = "todos" | "Inscricoes Abertas" | "Aguardando Prova";
+type FilterStatus = "todos" | "Inscricoes Abertas" | "Aguardando Prova" | "Inscricoes em breve";
 type TabType = "lista" | "cards" | "historico" | "favoritos" | "stats" | "calendario";
 type CardFormato = "feed" | "stories";
 type SortBy = "padrao" | "salario" | "vagas" | "prazo";
@@ -48,6 +49,7 @@ interface StatsData {
 const STATUS_DOT: Record<string, string> = {
   "Inscricoes Abertas": "#00C896",
   "Aguardando Prova":   "#A78BFA",
+  "Inscricoes em breve": "#FFB800",
   "Previsto":           "#FFB800",
   "Encerrado":          "#FF4B4B",
 };
@@ -55,6 +57,7 @@ const STATUS_DOT: Record<string, string> = {
 const STATUS_BG: Record<string, string> = {
   "Inscricoes Abertas": "rgba(0,200,150,.08)",
   "Aguardando Prova":   "rgba(167,139,250,.08)",
+  "Inscricoes em breve": "rgba(255,184,0,.08)",
   "Previsto":           "rgba(255,184,0,.08)",
   "Encerrado":          "rgba(255,75,75,.08)",
 };
@@ -107,7 +110,7 @@ function BadgeUrgente({ dias }: { dias: number }) {
 
 function StatusTag({ status }: { status: string }) {
   const color = STATUS_DOT[status] ?? "#888";
-  const label = status === "Inscricoes Abertas" ? "Inscrições Abertas" : status;
+  const label = statusDisplay(status);
   return (
     <span style={{
       background: STATUS_BG[status] ?? "rgba(255,255,255,.07)",
@@ -704,7 +707,7 @@ function AdminContent({ onLogout }: { onLogout: () => void }) {
         }
       }
       if (filter !== "todos" && c.status !== filter) return false;
-      if (estadoFiltro !== "Todos" && c.estado !== estadoFiltro) return false;
+      if (estadoFiltro !== "Todos" && !(c.estados || c.estado.split("/")).includes(estadoFiltro)) return false;
       if (nivelFiltro !== "Todos") {
         // Usa nivelDisplay para normalizar o nível antes de filtrar
         const nivelNorm = nivelDisplay(c.cargo, c.nivel);
@@ -1257,7 +1260,7 @@ function AdminContent({ onLogout }: { onLogout: () => void }) {
 
           {/* Filtro status */}
           <div className="filters-status-row" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {(["todos", "Inscricoes Abertas", "Aguardando Prova"] as FilterStatus[]).map(f => (
+          {(["todos", "Inscricoes Abertas", "Inscricoes em breve", "Aguardando Prova"] as FilterStatus[]).map(f => (
             <button key={f} onClick={() => setFilter(f)} style={{
               background: filter === f ? "rgba(0,200,150,.1)" : "transparent",
               border: "1px solid " + (filter === f ? "#00C896" : "rgba(255,255,255,.1)"),
@@ -1266,7 +1269,7 @@ function AdminContent({ onLogout }: { onLogout: () => void }) {
               cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
               transition: "all .15s",
             }}>
-              {f === "todos" ? "Todos" : f === "Inscricoes Abertas" ? "Inscrições Abertas" : f === "Aguardando Prova" ? "Aguardando Prova" : f}
+              {f === "todos" ? "Todos" : f === "Inscricoes Abertas" ? "Inscrições Abertas" : f === "Aguardando Prova" ? "Aguardando Prova" : statusDisplay(f)}
             </button>
           ))}
           </div>

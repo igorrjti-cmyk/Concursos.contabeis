@@ -83,6 +83,7 @@ export interface CargoDetalhe {
   salario: string;
   nivel: string;
   requisito: string;
+  evidencia?: string;
 }
 
 /**
@@ -100,7 +101,7 @@ export function extrairTabelaCargos(texto: string, textoCompleto?: string): Carg
   const linhas = textoSrc.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 3);
 
   const KW_CONTABIL_LOCAL = [
-    "contador", "contadora", "contábil", "contabilidade",
+    "contador", "contadora", "contábil", "contabilidade", "contábeis", "contabeis",
     "auditor", "fiscal", "tribut", "técnico em cont", "tecnico em cont",
     "analista cont", "controle interno",
   ];
@@ -115,7 +116,7 @@ export function extrairTabelaCargos(texto: string, textoCompleto?: string): Carg
     if (l.includes("superior")) return "Superior";
     if (l.includes("técnico") || l.includes("tecnico")) return "Médio/Técnico";
     if (l.includes("médio") || l.includes("medio")) return "Médio";
-    return "Superior";
+    return "Consultar edital";
   }
 
   // Estratégia 1: linha com cargo + vagas + salário juntos
@@ -136,8 +137,9 @@ export function extrairTabelaCargos(texto: string, textoCompleto?: string): Carg
         const key = cargo.toLowerCase();
         if (seen.has(key)) break;
         seen.add(key);
-        const contexto = linhas.slice(i, i + 3).join(" ");
+        const contexto = linha; // Never borrow a requirement from the next role.
         resultado.push({
+          evidencia: linha,
           cargo: cargo.charAt(0).toUpperCase() + cargo.slice(1),
           vagas: m[2].match(/\d/) ? m[2].replace(/vagas?/i, "").trim() + " vagas" : m[2].trim(),
           salario: "R$ " + m[3].trim(),
@@ -159,8 +161,9 @@ export function extrairTabelaCargos(texto: string, textoCompleto?: string): Carg
     let m: RegExpExecArray | null;
     while ((m = reBloco.exec(textoSrc)) !== null) {
       const cargo = m[1].trim();
-      if (!ehContabil(cargo) || seen.has(cargo.toLowerCase())) continue;
-      const trecho = textoSrc.slice(m.index, m.index + 400);
+      if (seen.has(cargo.toLowerCase())) continue;
+      const trecho = textoSrc.slice(m.index + m[0].length, m.index + m[0].length + 600).split(/(?:cargo|função|emprego)\s*[:\-]/i)[0];
+      if (!ehContabil(cargo + " " + trecho)) continue;
       const vagasM  = trecho.match(/vagas?\s*[:\-]?\s*(\d+|CR)/i);
       const salM    = trecho.match(/(?:salário|remuneração|vencimento)\s*[:\-]?\s*R\$\s*([\d.,]+)/i);
       if (!vagasM && !salM) continue;
@@ -170,7 +173,7 @@ export function extrairTabelaCargos(texto: string, textoCompleto?: string): Carg
         vagas:   vagasM ? vagasM[1].trim() + " vagas" : "-",
         salario: salM   ? "R$ " + salM[1]             : "Ver edital",
         nivel:   detectNivelLocal(trecho.slice(0, 300)),
-        requisito: trecho.toLowerCase().includes("crc") ? "Graduação + CRC" : "Nível Superior",
+        requisito: /ci[eê]ncias cont[aá]beis/i.test(trecho) ? trecho.trim() : trecho.toLowerCase().includes("crc") ? "Graduação + CRC" : "Consultar edital",
       });
     }
   }
@@ -209,7 +212,8 @@ async function extrairTextoPDF(buffer: ArrayBuffer): Promise<string> {
 }
 
 export async function extrairDetalhesDoPDF(pdfUrl: string): Promise<Partial<DetalhesEdital> | null> {
-  if (!pdfUrl || !pdfUrl.toLowerCase().endsWith(".pdf")) return null;
+  if (!pdfUrl) return null;
+  try { if (!new URL(pdfUrl).pathname.toLowerCase().endsWith(".pdf")) return null; } catch { return null; }
 
   const buffer = await baixarPDF(pdfUrl);
   if (!buffer) return null;
