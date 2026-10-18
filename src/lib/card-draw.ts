@@ -5,6 +5,7 @@
 // no card deve ser feito AQUI para valer nos dois lugares.
 
 import type { Concurso } from "./scraper";
+import { nomeCargoParaCard } from "./especialidades-contabeis";
 
 const STATUS_BG: Record<string, string> = {
   "Inscricoes Abertas": "#00C896",
@@ -176,7 +177,7 @@ export function desenharCard(
   }
 
   // ── Cargo ────────────────────────────────────────────────────────────────
-  const cargoTxt = truncate(c.cargo, isStories ? 28 : 36);
+  const cargoTxt = truncate(nomeCargoParaCard(c.cargo, isStories), isStories ? 28 : 36);
   const cargoSize = cargoTxt.length > 28 ? 64 : cargoTxt.length > 20 ? 76 : 90;
   ctx.font = `800 ${cargoSize}px ${FONT}`;
   ctx.fillStyle = "#fff";

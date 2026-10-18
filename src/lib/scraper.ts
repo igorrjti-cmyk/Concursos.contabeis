@@ -1,3 +1,4 @@
+import { extrairEspecialidadesContabeis, extrairDetalhesEspecialidade } from "./especialidades-contabeis";
 // src/lib/scraper.ts
 // Nota: extrairDetalhesDoPDF é importado dinamicamente em scrapeDetalhe
 //
@@ -43,6 +44,7 @@ const BASE_URL = "https://www.pciconcursos.com.br";
 
 // URLs de vagas ativas (inscrições abertas e previstos)
 export const VAGAS_URLS = [
+  "/vagas/analista-judiciario",
   "/vagas/contador",
   "/vagas/contadora",
   "/vagas/contabilidade",
@@ -229,6 +231,7 @@ const CARGO_CONTABIL_KW = [
 // Nível 2 — cargos genéricos que SÓ entram se o PDF exigir CRC/Ciências Contábeis
 // Removidos: "especialista", "assessor", "servidor", "agente administrativo" (genéricos demais)
 const CARGO_GENERICO_CONTABIL_KW = [
+  "analista judiciário", "analista judiciario",
   // Legislativo com área contábil
   "analista legislativo", "técnico legislativo", "tecnico legislativo",
   // Analistas de áreas financeiras/contábeis
@@ -656,6 +659,8 @@ function ehConcursoContabil(
  * Útil quando o concurso tem "Vários Cargos" — lista quais são contábeis.
  */
 function extrairCargosContabeisDoEdital(texto: string): string[] {
+  const especialidades = extrairEspecialidadesContabeis(texto);
+  if (especialidades.length) return especialidades;
   const cargos: string[] = [];
   const linhas = texto.split(/\n/).map(l => l.trim()).filter(Boolean);
 
@@ -816,6 +821,7 @@ export function extrairDetalhes(texto: string): DetalhesEdital {
   // Testa no texto com datas convertidas (pega "17 de maio de 2026")
   // As primeiras regex da lista são mais confiáveis (explícitas) — não aplicar validação de tsInscricaoAte nelas
   const provaReConfiavel = [
+    /provas?\s+objetivas?\s+e\s+discursivas?\s+(?:est[aã]o\s+)?previstas?\s+para\s+o\s+dia\s+(\d{2}\/\d{2}\/\d{4})/i,
     /aplica[cç][aã]o\s+das?\s+provas?\s*(?:objetivas?)?\s*[:\-–.]*\s*(\d{2}\/\d{2}\/\d{4})/i,
     /data\s+de\s+realiza[cç][aã]o\s+das?\s+provas?\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
     /provas?\s+(?:objetivas?|escritas?|pr[áa]ticas?)\s*[:\-–]\s*(\d{2}\/\d{2}\/\d{4})/i,
@@ -1114,8 +1120,8 @@ export async function scrapeListagem(url: string, ehPaginaDeNoticias = false): P
     }
 
     // Nível
-    const nivelMatch = blocoTexto.match(
-      /((?:Fundamental|M[eé]dio|Superior|T[eé]cnico)(?:\s*\/\s*(?:Fundamental|M[eé]dio|Superior|T[eé]cnico))*)/i
+    const nivelMatch = linhaVagas.match(
+      /((?:Fundamental|M[eé]dio|Superior|T[eé]cnico)(?:\s*\/\s*(?:Fundamental|M[eé]dio|Superior|T[eé]cnico))*)\s*$/i
     );
     const nivelRaw = nivelMatch ? nivelMatch[1] : "";
 
@@ -1251,8 +1257,16 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   }
 
   // ── Extrai do HTML da notícia (base) ──────────────────────────────────────
-  const texto = bodyText;
-  const det   = extrairDetalhes(texto);
+  // Remove navegação e notícias relacionadas antes de procurar cargos e datas.
+  const $artigo = $("article").first().clone();
+  $artigo.find("nav, aside, script, style").remove();
+  const texto = $artigo.length ? $artigo.text() : bodyText.split(/Veja também:|Destaques:/i)[0];
+  const det = extrairDetalhes(texto);
+  const especialidades = extrairDetalhesEspecialidade(texto);
+  if (especialidades.length) {
+    det.cargosContabeis = especialidades.map(c => c.cargo);
+    det.cargosDetalhados = especialidades;
+  }
   if (pdfHref) det.linkEdital = pdfHref;
   else if (siteOficialHref) det.linkEdital = siteOficialHref;
 
@@ -1435,6 +1449,8 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
 
     // Segunda chance no filtro usando texto completo do edital (PDF já lido)
     const cargoFinal = item.cargo || "-";
+    if (/analista judici[aá]rio/i.test(cargoFinal) &&
+        !det.cargosContabeis.some(c => /contabilidade|cont[aá]bil/i.test(c))) continue;
     const textoCompleto = det.requisito + " " + det.cargosContabeis.join(" ");
 
     // Caso 1: "Vários Cargos" — precisa ter cargos contábeis identificados no PDF
@@ -1600,8 +1616,8 @@ export async function scrapeAllConcursos(): Promise<Concurso[]> {
       estado:         item.estado || "Nacional",
       cidade:         item.cidade || "",
       uf:             item.uf || UF_NOMES[item.estado || ""] || (item.estado || "Nacional"),
-      vagas:          item.vagas || "-",
-      salario:        item.salario || "A consultar",
+      vagas:          det.cargosDetalhados?.length === 1 ? det.cargosDetalhados[0].vagas : item.vagas || "-",
+      salario:        det.cargosDetalhados?.length === 1 ? det.cargosDetalhados[0].salario : item.salario || "A consultar",
       inscricao:      item.inscricao || "-",
       inscricaoAte:   item.inscricaoAte || "Ver edital",
       diasRestantes:  item.diasRestantes ?? -1,

@@ -344,8 +344,8 @@ export default function PublicPage() {
 
                       <div style={{ flex: 1, minWidth: 150 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <span style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>
-                            {c.cargo.length > 55 ? c.cargo.slice(0, 52) + "…" : c.cargo}
+                          <span title={c.cargo} style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>
+                            {c.cargo}
                           </span>
                           <BadgeUrgente dias={c.diasRestantes} />
                           {temProva && (

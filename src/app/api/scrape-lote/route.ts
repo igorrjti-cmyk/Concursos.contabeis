@@ -146,6 +146,7 @@ export async function GET(req: Request) {
       const det  = detalhes[i];
 
       if (det.ehProcessoSeletivo) continue;
+      if (urlPath.includes("analista-judiciario") && !det.cargosContabeis.some(c => /contabilidade|cont[aá]bil/i.test(c))) continue;
 
       // Descarta se a data de prova já passou (compara data completa, cobre mesmo ano)
       const dataProvaFinal = det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-";
@@ -308,7 +309,9 @@ export async function GET(req: Request) {
         ...item,
         id:             key,
         cargo:          cargoDisplay,
-        nivel:          nivelContabil,
+        nivel:          det.cargosDetalhados?.length === 1 ? det.cargosDetalhados[0].nivel : nivelContabil,
+        vagas:          det.cargosDetalhados?.length === 1 ? det.cargosDetalhados[0].vagas : item.vagas,
+        salario:        det.cargosDetalhados?.length === 1 ? det.cargosDetalhados[0].salario : item.salario,
         status:         statusFinal,
         banca:          det.banca !== "-" ? det.banca : item.banca ?? "-",
         dataProva:      det.dataProva !== "-" ? det.dataProva : item.dataProva ?? "-",

@@ -1,3 +1,4 @@
+import { extrairEspecialidadesContabeis, extrairDetalhesEspecialidade } from "./especialidades-contabeis";
 // src/lib/pdf-extractor.ts
 // Extrai texto de PDFs de editais usando unpdf (otimizado para Vercel/Node.js)
 
@@ -91,6 +92,8 @@ export interface CargoDetalhe {
  *   "01 - Contador | 3 | R$ 4.500,00 | Graduação"
  */
 export function extrairTabelaCargos(texto: string, textoCompleto?: string): CargoDetalhe[] {
+  const especiais = extrairDetalhesEspecialidade(textoCompleto ?? texto);
+  if (especiais.length) return especiais;
   const textoSrc = textoCompleto ?? texto;
   const resultado: CargoDetalhe[] = [];
   const seen = new Set<string>();
@@ -426,6 +429,8 @@ function extrairDataResultadoFallback(textoNorm: string, dataProva: string): str
 }
 
 function extrairCargos(texto: string): string[] {
+  const especialidades = extrairEspecialidadesContabeis(texto);
+  if (especialidades.length) return especialidades;
   const cargos = new Set<string>();
 
   // Estratégia direta: busca por menções explícitas de cargos contábeis no texto
