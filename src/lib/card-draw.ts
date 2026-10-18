@@ -177,7 +177,7 @@ export function desenharCard(
   }
 
   // ── Cargo ────────────────────────────────────────────────────────────────
-  const cargoTxt = truncate(nomeCargoParaCard(c.cargo, isStories), isStories ? 28 : 36);
+  const cargoTxt = truncate(nomeCargoParaCard(c.cargo, true), isStories ? 28 : 36);
   const cargoSize = cargoTxt.length > 28 ? 64 : cargoTxt.length > 20 ? 76 : 90;
   ctx.font = `800 ${cargoSize}px ${FONT}`;
   ctx.fillStyle = "#fff";
@@ -310,3 +310,4 @@ export function desenharCard(
     ctx.textAlign = "left";
   }
 }
+
