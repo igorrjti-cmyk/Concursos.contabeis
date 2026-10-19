@@ -175,7 +175,11 @@ export function lerNoticiaPCI(html: string, url: string): Partial<DetalhesEdital
   }
   const periodos=paragrafos.filter(p=>/inscri/.test(normalizar(p))).map(p=>({p,d:extrairPeriodo(p)})).filter(p=>p.d.inscricaoAte);
   const basePeriodo=periodos.find(p=>p.d.inscricaoInicio)?.d;
-  const atualPeriodo=(periodos.find(p=>/prorrog|reabert/.test(normalizar(p.p))) || periodos.find(p=>p.d.inscricaoInicio) || periodos[0])?.d;
+  const alterados=periodos.filter(p=>/prorrog|reabert/.test(normalizar(p.p))).sort((a,b)=> {
+    const numero=(p:string)=>Number(normalizar(p).match(/retificacao\s*(?:n[ºo°.]*)?\s*0*(\d+)/)?.[1] || 0);
+    return numero(b.p)-numero(a.p) || (b.d.inscricaoAte || '').split('/').reverse().join('').localeCompare((a.d.inscricaoAte || '').split('/').reverse().join(''));
+  });
+  const atualPeriodo=(alterados[0] || periodos.find(p=>p.d.inscricaoInicio) || periodos[0])?.d;
   const periodo: Partial<DetalhesEdital>=atualPeriodo ? {...atualPeriodo,inscricaoInicio:atualPeriodo.inscricaoInicio || basePeriodo?.inscricaoInicio} : {};
   if(periodo.inscricaoInicio && periodo.inscricaoAte) periodo.inscricao=periodo.inscricaoInicio+' a '+periodo.inscricaoAte;
   const linhasProva = paragrafos.map(normalizarDatasTexto).filter(p=>/prova(?:s)? (?:objetiva|escrita)|aplicacao das provas|as provas (?:estao|foram)/.test(p))
