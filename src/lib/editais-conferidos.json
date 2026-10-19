@@ -629,7 +629,12 @@
     "conferidoEm": "2026-10-19T00:23:40.767Z",
     "status": "divergencia",
     "observacao": "O PDF consolidado contém duas datas: 22/11 na página 2 e 01/11 no item 4.1. A notícia informa 22/11. Confira a convocação vigente na banca.",
-    "documentoSha256": "b1b68f0bd3290301e223e7351d549a229064cbe01b1cfd06e7d9ad5ada76e2e5"
+    "documentoSha256": "b1b68f0bd3290301e223e7351d549a229064cbe01b1cfd06e7d9ad5ada76e2e5",
+    "ajusteInscricao": {
+      "anterior": "22/11/2026",
+      "inicio": "24/08/2026",
+      "fim": "22/10/2026"
+    }
   },
   {
     "fonte": "https://www.pciconcursos.com.br/noticias/prefeitura-de-floresta-pe-publica-edital-retificado-de-concurso-publico",
@@ -643,6 +648,35 @@
     "conferidoEm": "2026-10-19T00:23:40.768Z",
     "status": "divergencia",
     "observacao": "O PDF consolidado contém duas datas: 22/11 na página 2 e 01/11 no item 4.1. A notícia informa 22/11. Confira a convocação vigente na banca.",
-    "documentoSha256": "b1b68f0bd3290301e223e7351d549a229064cbe01b1cfd06e7d9ad5ada76e2e5"
+    "documentoSha256": "b1b68f0bd3290301e223e7351d549a229064cbe01b1cfd06e7d9ad5ada76e2e5",
+    "ajusteInscricao": {
+      "anterior": "22/11/2026",
+      "inicio": "24/08/2026",
+      "fim": "22/10/2026"
+    }
+  },
+  {
+    "fonte": "https://www.pciconcursos.com.br/noticias/prefeitura-de-sao-joaquim-da-barra-sp-abre-concurso-publico-para-diversos-cargos",
+    "cargo": "Fiscal de Rendas",
+    "dataAnterior": "01/11/2026",
+    "dataProva": "01/11/2026",
+    "editalPdf": "https://anexos-r2.selecao.net.br/uploads/815/concursos/117/anexos/a9c1e024-6b1c-4b18-8a0e-080677c74c03.pdf",
+    "documento": "https://anexos-r2.selecao.net.br/uploads/815/concursos/117/anexos/a9c1e024-6b1c-4b18-8a0e-080677c74c03.pdf",
+    "pagina": 58,
+    "evidencia": "APLICAÇÃO DAS PROVAS OBJETIVAS E PRÁTICO-PROFISSIONAL 01/11/2026",
+    "conferidoEm": "2026-10-19T00:33:46.704Z",
+    "documentoSha256": "06a660734b5ec5ac0cdb080abe341eea4f5da65bd49024d1ba349dfafb830de7"
+  },
+  {
+    "fonte": "https://www.pciconcursos.com.br/noticias/prefeitura-de-sao-joaquim-da-barra-sp-abre-concurso-publico-para-diversos-cargos",
+    "cargo": "Contador",
+    "dataAnterior": "01/11/2026",
+    "dataProva": "01/11/2026",
+    "editalPdf": "https://anexos-r2.selecao.net.br/uploads/815/concursos/117/anexos/a9c1e024-6b1c-4b18-8a0e-080677c74c03.pdf",
+    "documento": "https://anexos-r2.selecao.net.br/uploads/815/concursos/117/anexos/a9c1e024-6b1c-4b18-8a0e-080677c74c03.pdf",
+    "pagina": 58,
+    "evidencia": "APLICAÇÃO DAS PROVAS OBJETIVAS E PRÁTICO-PROFISSIONAL 01/11/2026",
+    "conferidoEm": "2026-10-19T00:33:46.723Z",
+    "documentoSha256": "06a660734b5ec5ac0cdb080abe341eea4f5da65bd49024d1ba349dfafb830de7"
   }
 ]

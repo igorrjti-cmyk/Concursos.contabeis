@@ -13,7 +13,8 @@ export function normalizarDatasTexto(texto: string): string {
 }
 
 export function extrairPeriodo(texto: string): Partial<DetalhesEdital> {
-  const t = normalizarDatasTexto(texto);
+  const expandido = normalizar(texto).replace(/\b(\d{1,2})\s+a\s+(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})/g,(_,inicio,fim,mes,ano)=>`${inicio} de ${mes} de ${ano} a ${fim} de ${mes} de ${ano}`);
+  const t = normalizarDatasTexto(expandido).split(/\b(?:com reimpressao|a taxa de inscricao|havera possibilidade de isencao|havera isencao|pagamento do boleto)/)[0];
   const datas = [...t.matchAll(/\b(\d{2}\/\d{2}\/\d{4})\b/g)];
   // Prefer the paragraph about enrollment; never use payment/fee-exemption dates.
   if (!/inscri/.test(t) || /^(?:a |o )?(?:pedido|periodo|prazo).*isencao/.test(t) || datas.length === 0) return {};
@@ -137,7 +138,7 @@ export function lerNoticiaPCI(html: string, url: string): Partial<DetalhesEdital
     // A shared salary is safe only when the source explicitly links it to the level.
     if (!salario && nivel !== 'Consultar edital') {
       const n=nivel==='Superior'?'superior':'medio';
-      salario=normalizar(textoHtml).match(new RegExp('r\\$\\s*([\\d.,]+)\\s+para\\s+cargos\\s+de\\s+nivel\\s+'+n))?.[1];
+      salario=paragrafos.filter(p=>/remunera|salario|vencimento/.test(normalizar(p)) && !/taxa de inscri/.test(normalizar(p))).map(normalizar).join(' ').match(new RegExp('r\\$\\s*([\\d.,]+)\\s+para\\s+cargos\\s+de\\s+nivel\\s+'+n))?.[1];
     }
     if (!salario) {
       const comum=paragrafos.find(p=> {

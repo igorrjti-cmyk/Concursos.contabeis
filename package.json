@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test tests/pci.test.cjs tests/pipeline.test.cjs tests/trt8.test.cjs tests/auditoria.test.cjs"
+    "test": "node --test tests/pci.test.cjs tests/pipeline.test.cjs tests/trt8.test.cjs tests/auditoria.test.cjs tests/periodos.test.cjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.6",
