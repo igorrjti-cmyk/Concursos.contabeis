@@ -10,6 +10,15 @@ const item={orgao:'Câmara de Exemplo',estado:'SP',linkNoticia:'https://www.pcic
 const detalhe=d=>({dataProva:'-',dataResultado:'-',banca:'-',linkEdital:'',cargosContabeis:[],requisito:'-',ehProcessoSeletivo:false,...d});
 const agora=new Date('2026-10-18T15:00:00-03:00');
 
+test('cards retain every glyph when rendered repeatedly in the same process',()=>{
+ const {renderCardServer}=require('../src/lib/card-renderer-server.ts');
+ const [c]=montarConcursos(item,detalhe(noticia('<ul><li>Contador (1 vaga)</li></ul>')),agora);
+ const first=renderCardServer(c,'feed');
+ renderCardServer({...c,cargo:'Coordenador de Controle Interno'},'stories');
+ const repeated=renderCardServer(c,'feed');
+ assert.equal(require('node:crypto').createHash('sha256').update(first).digest('hex'),require('node:crypto').createHash('sha256').update(repeated).digest('hex'));
+});
+
 test('Acari: auditor gets his own salary and vacancy, never the legal adviser salary',()=>{
  const d=noticia('<ul><li>Assessor Jurídico (1 vaga)</li><li>Auditor de Controle Interno (1 vaga)</li></ul><p>As remunerações são de R$ 2.750,00 para Assessor Jurídico e de R$ 2.350,00 para Auditor de Controle Interno.</p>');
  const [c]=montarConcursos(item,detalhe(d),agora);

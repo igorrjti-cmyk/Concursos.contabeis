@@ -10,23 +10,28 @@
 // public/fonts/Sora-Variable.ttf e é sempre registrada abaixo.
 
 import path from "node:path";
-import { createCanvas, GlobalFonts } from "@napi-rs/canvas";
+import { createCanvas, GlobalFonts, clearAllCache } from "@napi-rs/canvas";
 import type { Concurso } from "./scraper";
 import { desenharCard, type DesenhavelCtx } from "./card-draw";
 
-let fonteRegistrada = false;
+let fonteRegistrada: ReturnType<typeof GlobalFonts.registerFromPath> = null;
+let sequenciaFonte = 0;
 
 function registrarFonteSora() {
-  if (fonteRegistrada) return;
+  // A distinct alias prevents the native variable-font glyph cache from
+  // dropping repeated characters on subsequent canvases in the same process.
+  const familia = `SoraRender${++sequenciaFonte}`;
   try {
+    if(fonteRegistrada) GlobalFonts.remove(fonteRegistrada);
+    clearAllCache();
     const caminho = path.join(process.cwd(), "public", "fonts", "Sora-Variable.ttf");
-    GlobalFonts.registerFromPath(caminho, "Sora");
-    fonteRegistrada = true;
+    fonteRegistrada = GlobalFonts.registerFromPath(caminho, familia);
+    if(!fonteRegistrada) throw new Error("Não foi possível carregar a fonte Sora");
+    return familia;
   } catch (e) {
-    // Se falhar (ex: arquivo não encontrado no bundle), o card ainda é
-    // gerado, mas o texto pode sair invisível — loga alto para aparecer
-    // nos logs da Vercel e no e-mail de erro do cron.
+    // Interrompe a geração se a fonte não estiver disponível no bundle.
     console.error("[card-renderer-server] Falha ao registrar fonte Sora:", e);
+    throw e;
   }
 }
 
@@ -40,7 +45,7 @@ export function renderCardServer(
   c: Concurso,
   formato: "feed" | "stories" = "feed"
 ): string {
-  registrarFonteSora();
+  const fontFamily = registrarFonteSora();
 
   const W = 1080;
   const H = formato === "feed" ? 1350 : 1920;
@@ -48,7 +53,6 @@ export function renderCardServer(
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d") as unknown as DesenhavelCtx;
 
-  const fontFamily = "Sora, sans-serif";
   desenharCard(ctx, c, formato, fontFamily);
 
   const buffer = canvas.toBuffer("image/png");
