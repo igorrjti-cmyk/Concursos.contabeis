@@ -318,7 +318,7 @@ export default function PublicPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {filtered.map((c, i) => {
                 const cor = STATUS_DOT[c.status] ?? "#888";
-                const isPdf = c.linkEdital.toLowerCase().endsWith(".pdf");
+                const isPdf = /\.pdf(?:[?#]|$)/i.test(c.linkBanca || c.linkEdital);
                 // PCI passou a esconder o PDF do edital atrás de verificação JS —
                 // quando não achamos o PDF, o scraper tenta o site oficial do
                 // concurso (banca/inscrições) como alternativa ao link da notícia.
@@ -364,6 +364,9 @@ export default function PublicPage() {
                               📝 Prova: {c.dataProva}
                             </span>
                           )}
+                          {c.verificacaoProva && <span title={c.verificacaoProva.evidencia || c.verificacaoProva.observacao} style={{fontSize:10,color:c.verificacaoProva.status==='conferida-pdf'?'#00C896':'#FFB800'}}>
+                            {c.verificacaoProva.status==='conferida-pdf' ? `Conferida no PDF · pág. ${c.verificacaoProva.pagina} · ${new Date(c.verificacaoProva.conferidoEm!).toLocaleDateString('pt-BR',{timeZone:'America/Fortaleza'})}` : c.verificacaoProva.status==='divergencia' ? 'Data divergente: confira a banca' : 'Conferência no PDF pendente'}
+                          </span>}
                         </div>
                         <div style={{ color: "#00C896", fontSize: 12, marginTop: 2, fontWeight: 600 }}>{c.orgao}</div>
                         <div className="meta-row" style={{ color: "rgba(255,255,255,.3)", fontSize: 10, marginTop: 2 }}>
@@ -397,7 +400,7 @@ export default function PublicPage() {
                       </div>
 
                       <a
-                        href={c.linkEdital}
+                        href={c.linkBanca || c.linkEdital}
                         target="_blank"
                         rel="noreferrer"
                         className="edital-link"
@@ -414,6 +417,8 @@ export default function PublicPage() {
                       >
                         {isPdf ? "📄 Ver edital" : isSiteOficial ? "🌐 Site do concurso" : "🔗 Ver notícia"}
                       </a>
+                      {c.linkEditalPdf && c.linkEditalPdf !== (c.linkBanca || c.linkEdital) && <a href={c.linkEditalPdf} target="_blank" rel="noreferrer" className="edital-link" style={{color:'#00C896',border:'1px solid rgba(0,200,150,.25)',borderRadius:9,padding:'8px 14px',fontSize:12,fontWeight:700,textDecoration:'none',whiteSpace:'nowrap'}}>Edital em PDF</a>}
+                      {c.verificacaoProva?.documento && c.verificacaoProva.documento !== c.linkEditalPdf && <a href={c.verificacaoProva.documento+'#page='+c.verificacaoProva.pagina} target="_blank" rel="noreferrer" style={{color:'#FFB800',fontSize:11}}>Cronograma / retificação</a>}
                       {c.linkNoticia && c.linkNoticia !== c.linkEdital && <a href={c.linkNoticia} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#A78BFA",whiteSpace:"nowrap"}}>Fonte no PCI</a>}
                     </div>
                   </div>

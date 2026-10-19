@@ -1,4 +1,5 @@
 import { atualizarPrazo, normalizar } from "@/lib/concurso-dados";
+import { aplicarConferencia } from "@/lib/auditoria-editais";
 import { renderCardServer } from "@/lib/card-renderer-server";
 import { gerarLegenda } from "@/lib/legenda";
 import type { Concurso } from "@/lib/scraper";
@@ -152,7 +153,7 @@ export async function GET(req: Request) {
 
     try {
       const fonte=atuais.find(c=>c.id===ag.concurso_id) || atuais.find(c=>normalizar(c.orgao)===normalizar(ag.orgao) && normalizar(c.cargo)===normalizar(ag.cargo));
-      const atual=fonte ? atualizarPrazo(fonte) : undefined;
+      const atual=fonte ? atualizarPrazo(aplicarConferencia(fonte)) : undefined;
       if(!atual?.dadosValidados || atual.status!=="Inscricoes Abertas") {
         await sb.from("agendamentos_posts").update({tentativas:3}).eq("id",ag.id);
         r.status="Revisão necessária: cargo não confirmado ou inscrições fora do prazo";

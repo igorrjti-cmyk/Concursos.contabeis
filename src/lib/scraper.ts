@@ -35,6 +35,9 @@ export interface Concurso {
   diasRestantes: number;
   linkNoticia: string;
   linkEdital: string;
+  linkEditalPdf?: string;
+  linkBanca?: string;
+  verificacaoProva?: { status: "conferida-pdf" | "pendente" | "divergencia"; conferidoEm?: string; documento?: string; pagina?: number; evidencia?: string; observacao?: string };
   banca: string;
   nivel: string;
   dataProva: string;
@@ -742,6 +745,8 @@ export interface DetalhesEdital {
   cargosContabeis: string[];
   requisito: string;
   ehProcessoSeletivo: boolean;
+  linkEditalPdf?: string;
+  linkBanca?: string;
   cargosDetalhados?: { cargo: string; vagas: string; salario: string; nivel: string; requisito: string; evidencia?: string; estados?: string[] }[];
   textoHtml?: string; // texto completo do HTML da notícia para fallback de cargo
 }
@@ -1010,15 +1015,15 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   $("a[href]").each((_, el) => {
     if (pdfHref) return;
     const h = ($(el).attr("href") || "").trim();
-    if (h.match(/\.pdf$/i) && (h.includes("arq.pciconcursos") || h.includes("pciconcursos"))) {
+    if (h.match(/\.pdf(?:[?#]|$)/i) && (h.includes("arq.pciconcursos") || h.includes("pciconcursos"))) {
       pdfHref = h.startsWith("http") ? h : "https://arq.pciconcursos.com.br" + h;
     }
   });
   if (!pdfHref) {
-    $("a[href$='.pdf'], a[href$='.PDF']").each((_, el) => {
+    $("[itemprop=articleBody] a[href]").each((_, el) => {
       if (pdfHref) return;
       const h = ($(el).attr("href") || "").trim();
-      if (h) pdfHref = h.startsWith("http") ? h : url.replace(/\/[^\/]*$/, "/") + h;
+      if (/\.pdf(?:[?#]|$)/i.test(h)) pdfHref = new URL(h, url).href;
     });
   }
 
@@ -1031,7 +1036,7 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
   // mais útil para o candidato do que só o link da notícia do PCI.
   let siteOficialHref = "";
   let prioridadeSite = -1;
-  if (!pdfHref) {
+  {
     const DOMINIOS_IGNORADOS = [
       "pciconcursos.com.br", "facebook.com", "instagram.com", "twitter.com",
       "x.com", "linkedin.com", "t.me", "telegram", "whatsapp.com", "youtube.com",
@@ -1040,7 +1045,7 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
       const h = ($(el).attr("href") || "").trim();
       try {
         const host = new URL(h).hostname.replace(/^www\./, "");
-        if (DOMINIOS_IGNORADOS.some(d => host.includes(d))) return;
+        if (DOMINIOS_IGNORADOS.some(d => host.includes(d)) || /\.pdf(?:[?#]|$)/i.test(h)) return;
         const contexto = ($(el).parent().text() || "").toLowerCase();
         if (contexto.includes("site") || contexto.includes("inscri") || contexto.includes("edital")) {
           const prioridade = contexto.includes("inscri") ? 2 : 1;
@@ -1160,6 +1165,7 @@ export async function scrapeDetalhe(url: string): Promise<DetalhesEdital> {
     if ((["formacao-contabil","cargo-contabil"].includes(tipoRelevancia(cd.cargo,cd.requisito) || "")) && !confirmados.some(c=>normalizar(c.cargo)===normalizar(cd.cargo))) confirmados.push(cd);
   }
   return { ...det, ...estruturado, dataProva: estruturado.dataProva || "-",
+    linkEditalPdf: pdfHref || undefined, linkBanca: siteOficialHref || undefined,
     linkEdital: pdfHref || siteOficialHref || estruturado.linkEdital || url, banca: det.banca, cargosDetalhados: confirmados, cargosContabeis: confirmados.map(c => c.cargo) };
 
 }

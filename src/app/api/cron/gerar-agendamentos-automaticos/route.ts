@@ -1,4 +1,5 @@
 import { atualizarPrazo } from "@/lib/concurso-dados";
+import { aplicarConferencia } from "@/lib/auditoria-editais";
 // src/app/api/cron/gerar-agendamentos-automaticos/route.ts
 // Cron diário — roda LOGO DEPOIS de "atualizar-concursos".
 // Detecta concursos novos (mesmo critério do cron de notificações: nunca
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
       .eq("chave", "concursos:v20")
       .single<{ dados: { concursos: Concurso[] } }>();
 
-    const concursos = (cacheRow?.dados?.concursos ?? []).map(c=>atualizarPrazo(c));
+    const concursos = (cacheRow?.dados?.concursos ?? []).map(c=>atualizarPrazo(aplicarConferencia(c)));
     if (concursos.length === 0) {
       return NextResponse.json({ ok: true, message: "Cache vazio — nada para agendar" });
     }

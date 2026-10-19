@@ -1,4 +1,5 @@
 import type { Concurso, DetalhesEdital } from './scraper';
+import { aplicarConferencia } from './auditoria-editais';
 
 export const normalizar = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 export const limpar = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -68,10 +69,12 @@ export function montarConcursos(item: Partial<Concurso>, det: DetalhesEdital, no
       inscricaoAte:det.inscricaoAte || item.inscricaoAte || 'Ver edital', inscricaoFimHora:det.inscricaoFimHora,
       diasRestantes:-1, status:'Previsto', dataProva:det.dataProva || '-', dataResultado:det.dataResultado || '-',
       banca:det.banca || '-', linkNoticia:item.linkNoticia || '', linkEdital:det.linkEdital || item.linkNoticia || '',
+      linkEditalPdf:det.linkEditalPdf, linkBanca:det.linkBanca,
       dataCaptura:now.toISOString(), requisito:cd.requisito || 'Consultar edital', relevancia,
       evidenciaCargo:cd.evidencia || cd.cargo, dadosValidados:true,
     }, now);
-    return c.status === 'Encerrado' ? [] : [c];
+    const conferido = atualizarPrazo(aplicarConferencia(c), now);
+    return conferido.status === 'Encerrado' ? [] : [conferido];
   });
 }
 

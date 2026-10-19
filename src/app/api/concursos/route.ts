@@ -1,4 +1,5 @@
 import { atualizarPrazo } from "@/lib/concurso-dados";
+import { aplicarConferencia } from "@/lib/auditoria-editais";
 // src/app/api/concursos/route.ts
 // Cache via Supabase (tabela cache_concursos) - TTL 6h
 // CORREÇÃO: GET nunca faz scraping ao vivo — retorna cache mesmo expirado (stale).
@@ -14,7 +15,7 @@ export const maxDuration = 300;
 
 // Reclassifica status baseado na data atual — corrige cache desatualizado
 function reclassificarCache(concursos: Concurso[]): Concurso[] {
-  return concursos.map(c=>atualizarPrazo(c)).filter(c=>c.status!=="Encerrado");
+  return concursos.map(c=>atualizarPrazo(aplicarConferencia(c))).filter(c=>c.status!=="Encerrado");
 }
 
 const CACHE_KEY = "concursos:v20";
